@@ -10,7 +10,15 @@ let _sqliteInstance: any = null;
 export async function getDb() {
   if (!_db) {
     try {
-      _sqliteInstance = createClient({ url: "file:sqlite.db" });
+      const url = ENV.databaseUrl || "file:sqlite.db";
+      const authToken = process.env.DATABASE_AUTH_TOKEN;
+      
+      console.log(`[Database] Connecting to: ${url.startsWith("file:") ? "Local SQLite" : "Remote LibSQL"}`);
+      
+      _sqliteInstance = createClient({ 
+        url,
+        authToken
+      });
       _db = drizzle(_sqliteInstance);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
