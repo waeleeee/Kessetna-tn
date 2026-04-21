@@ -2,12 +2,12 @@
   "version": 2,
   "buildCommand": "pnpm run build",
   "functions": {
-    "api/index.ts": {
-      "includeFiles": "dist/public/**",
+    "api/index.js": {
+      "includeFiles": "dist/**",
       "memory": 1024
     }
   },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index.ts" }
+    { "source": "/(.*)", "destination": "/api/index.js" }
   ]
 }
