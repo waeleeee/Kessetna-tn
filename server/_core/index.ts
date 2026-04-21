@@ -55,6 +55,7 @@ async function startServer() {
   } else {
     serveStatic(app);
   }
+  return app;
 }
 
 export const app = startServer();
