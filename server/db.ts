@@ -10,7 +10,11 @@ let _sqliteInstance: any = null;
 export async function getDb() {
   if (!_db) {
     try {
-      const url = ENV.databaseUrl || "file:sqlite.db";
+      let url = ENV.databaseUrl || "file:sqlite.db";
+      // Ensure local files have the file: prefix
+      if (url && !url.startsWith("libsql://") && !url.startsWith("wss://") && !url.startsWith("https://") && !url.startsWith("file:")) {
+        url = `file:${url}`;
+      }
       const authToken = process.env.DATABASE_AUTH_TOKEN;
       
       console.log(`[Database] Connecting to: ${url.startsWith("file:") ? "Local SQLite" : "Remote LibSQL"}`);
