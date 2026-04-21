@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server/_core/index.ts",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "client/index.html",
+      "use": "@vercel/static"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "server/_core/index.ts"
+    },
+    {
+      "source": "/uploads/(.*)",
+      "destination": "/client/public/uploads/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "client/index.html"
+    }
+  ]
+}
