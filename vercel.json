@@ -2,22 +2,30 @@
   "version": 2,
   "builds": [
     {
-      "src": "server/_core/index.ts",
+      "src": "dist/index.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "dist/public/**/*",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "server/_core/index.ts"
+      "dest": "dist/index.js"
     },
     {
-      "src": "/manus-storage/(.*)",
-      "dest": "server/_core/index.ts"
+      "src": "/uploads/(.*)",
+      "dest": "dist/public/uploads/$1"
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "dist/public/assets/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "server/_core/index.ts"
+      "dest": "dist/index.js"
     }
   ]
 }
