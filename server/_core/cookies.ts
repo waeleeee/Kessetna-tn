@@ -4,12 +4,12 @@ import type { CookieOptions, Request } from "express";
 export function getSessionCookieOptions(
   req: Request
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
-  // We use a very simple config that works best for Vercel
+  const isProd = process.env.NODE_ENV === "production";
+  
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "lax",
-    // Vercel is always HTTPS in production
-    secure: process.env.NODE_ENV === "production",
+    sameSite: isProd ? "lax" : "lax",
+    secure: isProd, // Must be true on Vercel (HTTPS)
   };
 }

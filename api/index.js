@@ -4,7 +4,7 @@ import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
 // shared/const.ts
-var COOKIE_NAME = "app_session_id";
+var COOKIE_NAME = "kessetna_session";
 var ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
 var AXIOS_TIMEOUT_MS = 3e4;
 var UNAUTHED_ERR_MSG = "Please login (10001)";
@@ -16,12 +16,13 @@ import { TRPCError as TRPCError3 } from "@trpc/server";
 
 // server/_core/cookies.ts
 function getSessionCookieOptions(req) {
+  const isProd = process.env.NODE_ENV === "production";
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "lax",
-    // Vercel is always HTTPS in production
-    secure: process.env.NODE_ENV === "production"
+    sameSite: isProd ? "lax" : "lax",
+    secure: isProd
+    // Must be true on Vercel (HTTPS)
   };
 }
 
@@ -356,8 +357,8 @@ var _sqliteInstance = null;
 async function getDb() {
   if (!_db) {
     try {
-      let url = ENV.databaseUrl || "file:sqlite.db";
-      if (url && !url.startsWith("libsql://") && !url.startsWith("wss://") && !url.startsWith("https://") && !url.startsWith("file:")) {
+      let url = (ENV.databaseUrl || "file:sqlite.db").replace("libsql://", "https://");
+      if (url && !url.startsWith("https://") && !url.startsWith("wss://") && !url.startsWith("file:")) {
         url = `file:${url}`;
       }
       const authToken = process.env.DATABASE_AUTH_TOKEN;
@@ -936,6 +937,7 @@ var SDKServer = class {
   async authenticateRequest(req) {
     const cookies = this.parseCookies(req.headers.cookie);
     const sessionCookie = cookies.get(COOKIE_NAME);
+    console.log(`[Auth] authenticateRequest: Cookie name: ${COOKIE_NAME}, Found: ${!!sessionCookie}`);
     const session = await this.verifySession(sessionCookie);
     if (!session) {
       throw ForbiddenError("Invalid session cookie");

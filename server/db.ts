@@ -10,9 +10,9 @@ let _sqliteInstance: any = null;
 export async function getDb() {
   if (!_db) {
     try {
-      let url = ENV.databaseUrl || "file:sqlite.db";
+      let url = (ENV.databaseUrl || "file:sqlite.db").replace("libsql://", "https://");
       // Ensure local files have the file: prefix
-      if (url && !url.startsWith("libsql://") && !url.startsWith("wss://") && !url.startsWith("https://") && !url.startsWith("file:")) {
+      if (url && !url.startsWith("https://") && !url.startsWith("wss://") && !url.startsWith("file:")) {
         url = `file:${url}`;
       }
       const authToken = process.env.DATABASE_AUTH_TOKEN;
