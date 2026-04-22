@@ -4,7 +4,7 @@
   "installCommand": "pnpm install",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "dist/public/**",
+      "includeFiles": "dist/**",
       "memory": 1024
     }
   },

@@ -8,25 +8,24 @@ const app = express();
 
 app.use(express.json());
 
-// 1. HEALTH CHECK (No dependencies)
+// 1. HEALTH CHECK (Working!)
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString(), env: process.env.NODE_ENV });
+  res.json({ 
+    status: "ok", 
+    time: new Date().toISOString(), 
+    cwd: process.cwd(),
+    dirname: __dirname
+  });
 });
 
 // 2. LAZY LOAD HEAVY ROUTERS
-// We only import these when they are actually called to prevent startup crashes
 app.use("/api/trpc", async (req, res, next) => {
   try {
     const { createExpressMiddleware } = await import("@trpc/server/adapters/express");
     const { appRouter } = await import("../server/routers");
     const { createContext } = await import("../server/_core/context");
-    
-    return createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })(req, res, next);
+    return createExpressMiddleware({ router: appRouter, createContext })(req, res, next);
   } catch (e) {
-    console.error("tRPC initialization error:", e);
     res.status(500).json({ error: "tRPC failed to load", details: e.message });
   }
 });
@@ -42,8 +41,22 @@ app.use("/api/auth", async (req, res, next) => {
   }
 });
 
-// 3. STATIC FILES
-const distPath = path.resolve(process.cwd(), "dist", "public");
+// 3. STATIC FILES - Updated path logic
+// On Vercel, the 'api' folder is often moved. We check both possibilities.
+const possiblePaths = [
+  path.join(process.cwd(), "dist", "public"),
+  path.join(__dirname, "..", "dist", "public"),
+  path.join(__dirname, "dist", "public")
+];
+
+let distPath = possiblePaths[0];
+for (const p of possiblePaths) {
+  if (fs.existsSync(p)) {
+    distPath = p;
+    break;
+  }
+}
+
 app.use(express.static(distPath));
 
 app.get("*", (req, res) => {
@@ -53,7 +66,8 @@ app.get("*", (req, res) => {
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(503).send("Building frontend... please refresh.");
+    // If index.html is missing, let's at least show the path we tried
+    res.status(503).send(`Frontend assets not found. Path: ${distPath}`);
   }
 });
 
