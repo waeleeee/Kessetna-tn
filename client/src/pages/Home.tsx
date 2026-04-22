@@ -26,6 +26,15 @@ export default function Home() {
   const [photoPreview, setPhotoPreview] = useState<string>("");
   const [isCreating, setIsCreating] = useState(false);
   const [storyData, setStoryData] = useState<StoryData | null>(null);
+  
+  // Login success detector for Vercel
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("login_success") === "true") {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      window.location.reload();
+    }
+  }, []);
 
   // tRPC mutations and queries
   const createStoryMutation = trpc.story.create.useMutation();

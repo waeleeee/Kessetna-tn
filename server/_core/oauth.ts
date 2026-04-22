@@ -45,7 +45,7 @@ export function registerOAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      res.redirect(302, "/");
+      res.redirect(302, "/?login_success=true");
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
       res.status(500).json({ error: "OAuth callback failed" });
@@ -78,7 +78,7 @@ export function registerOAuthRoutes(app: Express) {
       console.log(`[Auth] Setting cookie ${COOKIE_NAME} on Vercel:`, JSON.stringify(cookieOptions));
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      res.redirect(302, "/");
+      res.redirect(302, "/?login_success=true");
     } catch (error) {
       console.error("[Auth] Local login failed", error);
       res.status(500).json({ error: "Local login failed", detail: error.message });

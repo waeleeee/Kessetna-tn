@@ -7,9 +7,10 @@ export function getSessionCookieOptions(
   const isProd = process.env.NODE_ENV === "production";
   
   return {
-    httpOnly: true,
+    // Making it visible to JS briefly to verify presence on Vercel
+    httpOnly: false, 
     path: "/",
-    sameSite: isProd ? "lax" : "lax",
-    secure: isProd, // Must be true on Vercel (HTTPS)
+    sameSite: "lax",
+    secure: isProd,
   };
 }

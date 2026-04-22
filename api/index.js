@@ -18,11 +18,11 @@ import { TRPCError as TRPCError3 } from "@trpc/server";
 function getSessionCookieOptions(req) {
   const isProd = process.env.NODE_ENV === "production";
   return {
-    httpOnly: true,
+    // Making it visible to JS briefly to verify presence on Vercel
+    httpOnly: false,
     path: "/",
-    sameSite: isProd ? "lax" : "lax",
+    sameSite: "lax",
     secure: isProd
-    // Must be true on Vercel (HTTPS)
   };
 }
 
@@ -1024,7 +1024,7 @@ function registerOAuthRoutes(app2) {
       });
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-      res.redirect(302, "/");
+      res.redirect(302, "/?login_success=true");
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
       res.status(500).json({ error: "OAuth callback failed" });
@@ -1051,7 +1051,7 @@ function registerOAuthRoutes(app2) {
       const cookieOptions = getSessionCookieOptions(req);
       console.log(`[Auth] Setting cookie ${COOKIE_NAME} on Vercel:`, JSON.stringify(cookieOptions));
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-      res.redirect(302, "/");
+      res.redirect(302, "/?login_success=true");
     } catch (error) {
       console.error("[Auth] Local login failed", error);
       res.status(500).json({ error: "Local login failed", detail: error.message });
