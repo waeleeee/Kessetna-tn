@@ -15,20 +15,13 @@ import { z as z2 } from "zod";
 import { TRPCError as TRPCError3 } from "@trpc/server";
 
 // server/_core/cookies.ts
-function isSecureRequest(req) {
-  if (req.protocol === "https") return true;
-  const forwardedProto = req.headers["x-forwarded-proto"];
-  if (!forwardedProto) return false;
-  const protoList = Array.isArray(forwardedProto) ? forwardedProto : forwardedProto.split(",");
-  return protoList.some((proto) => proto.trim().toLowerCase() === "https");
-}
 function getSessionCookieOptions(req) {
-  const isSecure = isSecureRequest(req);
   return {
     httpOnly: true,
     path: "/",
     sameSite: "lax",
-    secure: isSecure
+    // Vercel is always HTTPS in production
+    secure: process.env.NODE_ENV === "production"
   };
 }
 
@@ -1054,6 +1047,7 @@ function registerOAuthRoutes(app2) {
         expiresInMs: ONE_YEAR_MS
       });
       const cookieOptions = getSessionCookieOptions(req);
+      console.log(`[Auth] Setting cookie ${COOKIE_NAME} on Vercel:`, JSON.stringify(cookieOptions));
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
       res.redirect(302, "/");
     } catch (error) {
