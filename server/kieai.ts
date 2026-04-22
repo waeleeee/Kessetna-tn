@@ -7,7 +7,7 @@ const KIE_AI_API_KEY = process.env.KIE_AI_API_KEY || "45023506279af6f87ab82071fb
 /**
  * Generate story text using Kie.ai GPT API
  */
-export async function generateStoryWithGPT(prompt: string): Promise<string> {
+export async function generateStoryWithGPT(prompt: string): Promise<{ story: string; visualPrompt: string }> {
   const response = await fetch(`${KIE_AI_API_BASE}/gpt-5-2/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -16,15 +16,45 @@ export async function generateStoryWithGPT(prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: "gpt-5-2",
-      messages: [{ role: "system", content: "You are a creative Arabic children's story writer." }, { role: "user", content: prompt }],
+      messages: [
+        { 
+          role: "system", 
+          content: `You are an expert Arabic children's story writer. 
+Rules:
+1. Write ONLY the story content. 
+2. Use FULL TASHKEEL (vowels/diacritics) for every word. This is CRITICAL.
+3. NO introductory remarks (e.g., "Certainly!", "Here is...").
+4. NO concluding remarks or questions (e.g., "Would you like...", "I hope...").
+5. Return a JSON object with two fields: 
+   - "story": The Arabic story text with full tashkeel.
+   - "visualPrompt": A short, descriptive English prompt (max 50 words) for an AI image generator describing the scene. Focus on the main character and the Tunisian setting. Keep it safe and educational.`
+        }, 
+        { role: "user", content: prompt }
+      ],
       temperature: 0.7,
-      max_tokens: 2000,
+      max_tokens: 2500,
     }),
   });
 
   if (!response.ok) throw new Error(`GPT API Error: ${response.status}`);
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || data.content || "";
+  const content = data.choices?.[0]?.message?.content || data.content || "";
+  
+  try {
+    // Extract JSON if it's wrapped in markdown blocks
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : content;
+    const parsed = JSON.parse(jsonStr);
+    return {
+      story: parsed.story || content,
+      visualPrompt: parsed.visualPrompt || "A happy child in Sidi Bou Said, Tunisia, vibrant colors."
+    };
+  } catch (e) {
+    return { 
+      story: content, 
+      visualPrompt: "A happy child in Sidi Bou Said, Tunisia, vibrant colors." 
+    };
+  }
 }
 
 /**
@@ -37,14 +67,13 @@ export async function generateImageWithNanoBanana(
   const NANO_BANANA_API_KEY = "b7aa7cee46af40269c2d8a7d036cbfb0";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
 
-  // SAFETY-FIRST PROMPT FOR TUNISIAN EDUCATIONAL STYLE
-  // We avoid words that trigger filters and emphasize educational/safe quality
+  // FLUID & HEALTHY PROMPT FOR TUNISIAN STYLE (Text + Image Reference)
   const safePrompt = `
-A heroic young explorer in a premium educational book illustration.
-Sidi Bou Said, Tunisia setting with white walls and blue doors.
-MATCH THE HERO'S FACE AND CLOTHING FROM THE REFERENCE PHOTO: ${childPhotoUrl}
-Style: Family-friendly Ghibli-inspired art, vibrant colors, clean lines, safe for school children.
-Action: ${prompt.slice(0, 300)}
+Educational children's book illustration, vibrant Ghibli-inspired anime art.
+Character: The child from the attached reference photo. MUST MATCH FACE AND CLOTHING EXACTLY.
+Action: ${prompt}
+Setting: Sidi Bou Said, Tunisia, white walls, blue windows, mediterranean atmosphere.
+Style: Professional illustration, clean lines, bright colors, friendly and safe for children.
   `.trim();
 
   console.log(`[AI] Nanobanana Safe Request with originImageUrl: ${childPhotoUrl}`);

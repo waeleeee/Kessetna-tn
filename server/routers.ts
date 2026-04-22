@@ -46,22 +46,27 @@ export const appRouter = router({
 
           // 2. GPT Story
           let storyText: string;
+          let visualPrompt: string | undefined;
           try {
             const prompt = `اكتب قصة للأطفال عن ${input.childName} (${input.childAge} سنة). المشكلة: ${input.problemDescription}. الهدف: ${input.educationalGoal}.`.trim();
-            storyText = await generateStoryWithGPT(prompt);
+            const result = await generateStoryWithGPT(prompt);
+            storyText = result.story;
+            visualPrompt = result.visualPrompt;
           } catch (e) {
             storyText = `كان يا مكان... قصة عن ${input.childName}.`;
+            visualPrompt = `Anime illustration of ${input.childName} in Sidi Bou Said.`;
           }
 
           // 3. Image Task
           let taskId: string | undefined;
-          if (childPhotoUrl) {
+          const imageRef = input.childPhotoBase64 
+            ? `data:image/jpeg;base64,${input.childPhotoBase64}` 
+            : undefined;
+
+          if (imageRef) {
             try {
-              const protocol = ctx.req.headers["x-forwarded-proto"] || "http";
-              const host = ctx.req.headers.host;
-              const absoluteUrl = `${protocol}://${host}${childPhotoUrl}`;
-              const imagePrompt = `Anime illustration of ${input.childName}. Sidi Bou Said. ${storyText.slice(0, 100)}`;
-              taskId = await generateImageWithNanoBanana(imagePrompt, absoluteUrl);
+              // Use the base64 data URI directly for character consistency (works on localhost)
+              taskId = await generateImageWithNanoBanana(visualPrompt || input.childName, imageRef);
             } catch (e) { console.error("Image failed:", e); }
           }
 
