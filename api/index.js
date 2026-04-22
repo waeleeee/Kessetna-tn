@@ -208,7 +208,15 @@ async function generateStoryWithGPT(prompt) {
 async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
   const NANO_BANANA_API_KEY = "8fbad5fe9f8a9b1e4d08dfd2e97a2fad";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
-  console.log(`[AI] Requesting Nanobanana with Image Reference URL: ${childPhotoUrl}`);
+  const enhancedPrompt = `
+(USE_REFERENCE_IMAGE: ${childPhotoUrl})
+The main character MUST BE AN EXACT CLONE of the child in this photo: ${childPhotoUrl}
+REPLICATE FACE, HAIR, EYES, AND EXACT CLOTHING.
+Style: Premium Anime / Studio Ghibli.
+Setting: Sidi Bou Said, Tunisia.
+Action: ${prompt}
+  `.trim();
+  console.log(`[AI] Nanobanana Request with URL: ${childPhotoUrl}`);
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/generate`, {
     method: "POST",
     headers: {
@@ -217,11 +225,13 @@ async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
     },
     body: JSON.stringify({
       model: "nano-banana",
-      prompt,
+      prompt: enhancedPrompt,
+      // Try multiple possible field names for the reference image
       image: childPhotoUrl,
-      // Passing the PUBLIC URL of the child's photo
+      ref_image: childPhotoUrl,
+      image_url: childPhotoUrl,
       type: "TEXTTOIAMGE"
-      // RESTORED THE TYPO as requested by user
+      // The magical typo version
     })
   });
   const result = await response.json();

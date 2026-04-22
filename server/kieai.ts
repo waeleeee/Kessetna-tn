@@ -28,7 +28,7 @@ export async function generateStoryWithGPT(prompt: string): Promise<string> {
 }
 
 /**
- * Generate image using Kie.ai Nano Banana API (Image Reference Mode)
+ * Generate image using Kie.ai Nano Banana API (Ultimate Character Consistency Mode)
  */
 export async function generateImageWithNanoBanana(
   prompt: string,
@@ -37,7 +37,17 @@ export async function generateImageWithNanoBanana(
   const NANO_BANANA_API_KEY = "8fbad5fe9f8a9b1e4d08dfd2e97a2fad";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
 
-  console.log(`[AI] Requesting Nanobanana with Image Reference URL: ${childPhotoUrl}`);
+  // ENHANCE PROMPT WITH HYPER-CONSISTENCY INSTRUCTIONS
+  const enhancedPrompt = `
+(USE_REFERENCE_IMAGE: ${childPhotoUrl})
+The main character MUST BE AN EXACT CLONE of the child in this photo: ${childPhotoUrl}
+REPLICATE FACE, HAIR, EYES, AND EXACT CLOTHING.
+Style: Premium Anime / Studio Ghibli.
+Setting: Sidi Bou Said, Tunisia.
+Action: ${prompt}
+  `.trim();
+
+  console.log(`[AI] Nanobanana Request with URL: ${childPhotoUrl}`);
 
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/generate`, {
     method: "POST",
@@ -47,9 +57,12 @@ export async function generateImageWithNanoBanana(
     },
     body: JSON.stringify({
       model: "nano-banana",
-      prompt: prompt,
-      image: childPhotoUrl, // Passing the PUBLIC URL of the child's photo
-      type: "TEXTTOIAMGE" // RESTORED THE TYPO as requested by user
+      prompt: enhancedPrompt,
+      // Try multiple possible field names for the reference image
+      image: childPhotoUrl,
+      ref_image: childPhotoUrl,
+      image_url: childPhotoUrl,
+      type: "TEXTTOIAMGE" // The magical typo version
     }),
   });
 
