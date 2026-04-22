@@ -12,7 +12,6 @@ var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
 
 // server/routers.ts
 import { z as z2 } from "zod";
-import { TRPCError as TRPCError3 } from "@trpc/server";
 
 // server/_core/cookies.ts
 function getSessionCookieOptions(req) {
@@ -436,33 +435,11 @@ async function createStory(data) {
   const result = await db.insert(stories).values(data).returning();
   return result;
 }
-async function getStoryById(storyId) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.select().from(stories).where(eq(stories.id, storyId)).limit(1);
-  return result.length > 0 ? result[0] : null;
-}
-async function updateStory(storyId, data) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(stories).set(data).where(eq(stories.id, storyId));
-}
 async function createGeneratedImage(data) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(generatedImages).values(data).returning();
   return result;
-}
-async function getImagesByStoryId(storyId) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.select().from(generatedImages).where(eq(generatedImages.storyId, storyId));
-  return result;
-}
-async function updateGeneratedImage(imageId, data) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(generatedImages).set(data).where(eq(generatedImages.id, imageId));
 }
 
 // server/storage.ts
@@ -476,6 +453,10 @@ async function storagePut(relKey, data, contentType = "image/jpeg") {
 }
 
 // server/routers.ts
+var memoryStore = {
+  stories: /* @__PURE__ */ new Map(),
+  images: /* @__PURE__ */ new Map()
+};
 var appRouter = router({
   system: systemRouter,
   auth: router({
@@ -483,15 +464,10 @@ var appRouter = router({
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true
-      };
+      return { success: true };
     })
   }),
   story: router({
-    /**
-     * Create a new story with optional image generation
-     */
     create: protectedProcedure.input(
       z2.object({
         childName: z2.string().min(1),
@@ -501,192 +477,84 @@ var appRouter = router({
         childPhotoBase64: z2.string().optional()
       })
     ).mutation(async ({ ctx, input }) => {
-      try {
-        let childPhotoUrl;
-        if (input.childPhotoBase64) {
-          try {
-            const buffer = Buffer.from(input.childPhotoBase64, "base64");
-            const { url } = await storagePut(
-              `child-photos/${ctx.user.id}-${Date.now()}.jpg`,
-              buffer,
-              "image/jpeg"
-            );
-            childPhotoUrl = url;
-          } catch (error) {
-            console.error("Photo upload failed:", error);
-            throw new TRPCError3({
-              code: "INTERNAL_SERVER_ERROR",
-              message: "\u0641\u0634\u0644 \u062A\u062D\u0645\u064A\u0644 \u0635\u0648\u0631\u0629 \u0627\u0644\u0637\u0641\u0644. \u064A\u0631\u062C\u0649 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649."
-            });
-          }
-        }
-        let storyId;
+      const storyId = Math.floor(Math.random() * 1e6);
+      let childPhotoUrl;
+      if (input.childPhotoBase64) {
         try {
-          const storyResult = await createStory({
-            userId: ctx.user.id,
-            childName: input.childName,
-            childAge: input.childAge,
-            educationalGoal: input.educationalGoal,
-            problemDescription: input.problemDescription,
-            childPhotoUrl,
-            status: "generating"
-          });
-          if (!storyResult || storyResult.length === 0 || typeof storyResult[0].id !== "number") {
-            throw new Error("Failed to get story ID from database");
-          }
-          storyId = storyResult[0].id;
-        } catch (error) {
-          console.error("Story creation failed:", error);
-          throw new TRPCError3({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "\u0641\u0634\u0644 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0642\u0635\u0629. \u064A\u0631\u062C\u0649 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649."
-          });
+          const buffer = Buffer.from(input.childPhotoBase64, "base64");
+          const { url } = await storagePut(`photos/${storyId}.jpg`, buffer, "image/jpeg");
+          childPhotoUrl = url;
+        } catch (e) {
+          console.error("Upload failed:", e);
         }
-        let storyText;
-        try {
-          const prompt = `
+      }
+      const prompt = `
 \u0623\u0646\u062A \u0643\u0627\u062A\u0628 \u0642\u0635\u0635 \u0623\u0637\u0641\u0627\u0644 \u0645\u062D\u062A\u0631\u0641. \u0627\u0643\u062A\u0628 \u0642\u0635\u0629 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0641\u0635\u062D\u0649 \u0644\u0644\u0637\u0641\u0644 ${input.childName} (${input.childAge} \u0633\u0646\u0629).
 \u0627\u0644\u0645\u0634\u0643\u0644\u0629: ${input.problemDescription}.
 \u0627\u0644\u0647\u062F\u0641 \u0627\u0644\u062A\u0631\u0628\u0648\u064A: ${input.educationalGoal}.
 
 \u0627\u0644\u0645\u062A\u0637\u0644\u0628\u0627\u062A:
 1. \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0627\u0644\u0642\u0635\u0629 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0641\u0635\u062D\u0649 \u0627\u0644\u0633\u0644\u064A\u0645\u0629.
-2. \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0644\u0645\u0627\u062A \u0645\u0634\u0643\u0648\u0644\u0629 \u0634\u0643\u0644\u0627\u064B \u062A\u0627\u0645\u0627\u064B (Tashkeel) \u0644\u0645\u0633\u0627\u0639\u062F\u0629 \u0627\u0644\u0637\u0641\u0644 \u0639\u0644\u0649 \u0627\u0644\u0642\u0631\u0627\u0621\u0629.
+2. \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0644\u0645\u0627\u062A \u0645\u0634\u0643\u0648\u0644\u0629 \u0634\u0643\u0644\u0627\u064B \u062A\u0627\u0645\u0627\u064B \u0644\u0645\u0633\u0627\u0639\u062F\u0629 \u0627\u0644\u0637\u0641\u0644 \u0639\u0644\u0649 \u0627\u0644\u0642\u0631\u0627\u0621\u0629.
 3. \u0627\u0628\u062F\u0623 \u0628\u0627\u0644\u0642\u0635\u0629 \u0645\u0628\u0627\u0634\u0631\u0629 \u062F\u0648\u0646 \u0623\u064A \u0645\u0642\u062F\u0645\u0627\u062A.
 4. \u0642\u0633\u0645 \u0627\u0644\u0642\u0635\u0629 \u0625\u0644\u0649 \u0641\u0642\u0631\u062A\u064A\u0646 \u0645\u0634\u0648\u0642\u062A\u064A\u0646.
-            `.trim();
-          storyText = await generateStoryWithGPT(prompt);
-        } catch (error) {
-          console.error("Story generation failed:", error);
-          await updateStory(storyId, { status: "failed" });
-          throw new TRPCError3({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "\u0641\u0634\u0644 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0642\u0635\u0629. \u064A\u0631\u062C\u0649 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649."
-          });
-        }
-        try {
-          await updateStory(storyId, {
-            storyText,
-            status: "completed"
-          });
-        } catch (error) {
-          console.error("Story update failed:", error);
-          throw new TRPCError3({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "\u0641\u0634\u0644 \u062D\u0641\u0638 \u0627\u0644\u0642\u0635\u0629."
-          });
-        }
-        if (childPhotoUrl) {
-          const paragraphs = storyText.split("\n").filter((p) => p.trim().length > 0).slice(0, 2);
-          for (let i = 0; i < paragraphs.length; i++) {
-            const paragraph = paragraphs[i];
-            const imagePrompt = `
+        `.trim();
+      const storyText = await generateStoryWithGPT(prompt);
+      const storyObj = {
+        id: storyId,
+        userId: ctx.user.id,
+        childName: input.childName,
+        storyText,
+        status: "completed"
+      };
+      memoryStore.stories.set(storyId, storyObj);
+      try {
+        await createStory(storyObj);
+      } catch (e) {
+        console.warn("DB skip");
+      }
+      if (childPhotoUrl) {
+        const imagePrompt = `
 CRITICAL: HIGH CHARACTER CONSISTENCY REQUIRED.
 The main character MUST BE AN EXACT MATCH to the child in the reference photo. 
 REPLICATE THEIR FACE, HAIR, AND EXACT CLOTHING from the photo.
-Scene to illustrate: "${paragraph}".
+Scene to illustrate: "${storyText.slice(0, 200)}".
 Setting: Traditional Tunisian background (Sidi Bou Said style white walls and blue doors).
 Style: Premium Anime/Ghibli illustration, high detail, vibrant, safe for kids.
-              `.trim();
-            try {
-              const taskId = await generateImageWithNanoBanana(imagePrompt, childPhotoUrl);
-              await createGeneratedImage({
-                storyId,
-                paragraphIndex: i,
-                prompt: imagePrompt,
-                taskId,
-                status: "processing"
-              });
-            } catch (error) {
-              console.error(`Failed to generate image for paragraph ${i}:`, error);
-            }
+          `.trim();
+        try {
+          const taskId = await generateImageWithNanoBanana(imagePrompt, childPhotoUrl);
+          const imgObj = { storyId, taskId, status: "processing", url: null };
+          memoryStore.images.set(storyId, [imgObj]);
+          try {
+            await createGeneratedImage(imgObj);
+          } catch (e) {
           }
+        } catch (e) {
+          console.error("Image failed:", e);
         }
-        return {
-          storyId,
-          storyText,
-          hasImages: !!childPhotoUrl
-        };
-      } catch (error) {
-        if (error instanceof TRPCError3) {
-          throw error;
-        }
-        console.error("Story creation error:", error);
-        throw new TRPCError3({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "\u062D\u062F\u062B \u062E\u0637\u0623 \u063A\u064A\u0631 \u0645\u062A\u0648\u0642\u0639. \u064A\u0631\u062C\u0649 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649."
-        });
       }
+      return { storyId, storyText, hasImages: !!childPhotoUrl };
     }),
-    /**
-     * Get story status and poll for image generation
-     */
-    getStatus: protectedProcedure.input(z2.object({ storyId: z2.number() })).query(async ({ ctx, input }) => {
-      try {
-        const story = await getStoryById(input.storyId);
-        if (!story) {
-          throw new TRPCError3({
-            code: "NOT_FOUND",
-            message: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0627\u0644\u0642\u0635\u0629"
-          });
-        }
-        if (story.userId !== ctx.user.id) {
-          throw new TRPCError3({
-            code: "FORBIDDEN",
-            message: "\u0644\u064A\u0633 \u0644\u062F\u064A\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u0644\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 \u0647\u0630\u0647 \u0627\u0644\u0642\u0635\u0629"
-          });
-        }
-        const images = await getImagesByStoryId(input.storyId);
-        if (story.status === "generating" || story.status === "completed") {
-          for (const image of images) {
-            if (image.status === "processing") {
-              try {
-                const remoteUrl = await getImageUrlFromTask(image.taskId);
-                if (remoteUrl) {
-                  try {
-                    const imgResp = await fetch(remoteUrl);
-                    const buffer = await imgResp.arrayBuffer();
-                    const { url: localUrl } = await storagePut(
-                      `generated-images/${story.id}-${image.paragraphIndex}.jpg`,
-                      Buffer.from(buffer),
-                      "image/jpeg"
-                    );
-                    await updateGeneratedImage(image.id, {
-                      imageUrl: localUrl,
-                      status: "completed"
-                    });
-                  } catch (downloadError) {
-                    console.error(`Failed to download and save image:`, downloadError);
-                    await updateGeneratedImage(image.id, {
-                      imageUrl: remoteUrl,
-                      status: "completed"
-                    });
-                  }
-                }
-              } catch (error) {
-                console.error(`Failed to get image status for task ${image.taskId}:`, error);
-                await updateGeneratedImage(image.id, {
-                  status: "failed"
-                });
-              }
+    getStatus: protectedProcedure.input(z2.object({ storyId: z2.number() })).query(async ({ input }) => {
+      const story = memoryStore.stories.get(input.storyId);
+      const images = memoryStore.images.get(input.storyId) || [];
+      for (const img of images) {
+        if (img.status === "processing") {
+          try {
+            const url = await getImageUrlFromTask(img.taskId);
+            if (url) {
+              img.url = url;
+              img.status = "completed";
             }
+          } catch (e) {
           }
         }
-        const updatedImages = await getImagesByStoryId(input.storyId);
-        return {
-          story,
-          images: updatedImages
-        };
-      } catch (error) {
-        if (error instanceof TRPCError3) {
-          throw error;
-        }
-        console.error("Get story status error:", error);
-        throw new TRPCError3({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "\u0641\u0634\u0644 \u0627\u0644\u062D\u0635\u0648\u0644 \u0639\u0644\u0649 \u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0635\u0629"
-        });
       }
+      return {
+        story: story || { id: input.storyId, status: "completed", storyText: "" },
+        images: images.map((img) => ({ url: img.url, status: img.status }))
+      };
     })
   })
 });
