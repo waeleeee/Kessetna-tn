@@ -1,17 +1,33 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
-import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Streamdown } from "streamdown";
+import { motion, AnimatePresence } from "framer-motion";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { 
+  Sparkles, 
+  User as UserIcon, 
+  Baby, 
+  Target, 
+  AlertCircle, 
+  Camera, 
+  RefreshCw,
+  BookOpen,
+  CheckCircle2
+} from "lucide-react";
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth();
-  const isAuthenticated = true;
+  const isAuthenticated = true; // For development convenience, usually use !!user
+  
   const [formData, setFormData] = useState({
     childName: "",
-    childAge: 5,
-    educationalGoal: "الشجاعة والثقة بالنفس",
+    childAge: 10,
+    educationalGoal: "تحسين الثقة بالنفس والاندماج الاجتماعي",
     problemDescription: "",
     childPhotoBase64: "",
   });
@@ -73,81 +89,241 @@ export default function Home() {
       setTaskId(result.taskId || null);
       setShowResults(true);
     } catch (error) {
-      alert("Error creating story");
+      console.error("Error creating story:", error);
     } finally {
       setIsCreating(false);
     }
   };
 
-  if (!isAuthenticated) return <div className="p-10 text-center">Please Login</div>;
+  if (!isAuthenticated) return <div className="p-10 text-center font-bold">يرجى تسجيل الدخول</div>;
 
   return (
-    <div className="min-h-screen bg-[#fef5f0] p-4" dir="rtl">
-      <div className="max-w-4xl mx-auto pt-10">
-        {!showResults ? (
-          <div className="card memphis-shadow bg-white p-8 rounded-xl border-4 border-[#1a1a1a]">
-            <h1 className="text-4xl font-black mb-8 text-center text-[#1a1a1a]">🌟 مولد حكاياتنا</h1>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <input 
-                placeholder="اسم الطفل" 
-                className="w-full p-4 border-4 border-[#1a1a1a] rounded-xl text-xl"
-                value={formData.childName} 
-                onChange={e => setFormData({...formData, childName: e.target.value})} 
-                required 
-              />
-              <textarea 
-                placeholder="ما هو التحدي الذي يواجهه؟" 
-                className="w-full p-4 border-4 border-[#1a1a1a] rounded-xl text-xl"
-                rows={4}
-                value={formData.problemDescription} 
-                onChange={e => setFormData({...formData, problemDescription: e.target.value})} 
-                required 
-              />
-              <div className="p-4 border-4 border-dashed border-[#1a1a1a] rounded-xl text-center">
-                <input type="file" accept="image/*" onChange={handlePhotoChange} />
-                {photoPreview && <img src={photoPreview} className="mt-4 max-h-40 mx-auto rounded-lg border-2 border-[#1a1a1a]" />}
-              </div>
-              <button 
-                type="submit" 
-                disabled={isCreating}
-                className="w-full bg-[#ff6b6b] text-white font-black text-2xl py-4 rounded-xl border-4 border-[#1a1a1a] shadow-[8px_8px_0px_0px_rgba(26,26,26,1)] hover:translate-y-1 hover:shadow-none transition-all"
-              >
-                {isCreating ? "جاري التأليف..." : "ابدأ الحكاية ✨"}
-              </button>
-            </form>
-          </div>
-        ) : (
-          <div className="space-y-8 pb-20">
-            <div className="card memphis-shadow bg-white p-10 rounded-xl border-4 border-[#1a1a1a]">
-              <h2 className="text-3xl font-black mb-6">📖 القصة</h2>
-              <div className="text-2xl leading-relaxed whitespace-pre-wrap">
-                <Streamdown>{storyText}</Streamdown>
-              </div>
-            </div>
-
-            {taskId && (
-              <div className="card memphis-shadow bg-white p-10 rounded-xl border-4 border-[#1a1a1a]">
-                <h2 className="text-3xl font-black mb-6">🎨 صورة الحكاية</h2>
-                {!imageUrl ? (
-                  <div className="text-center py-10">
-                    <div className="animate-spin text-5xl mb-4">🌀</div>
-                    <p className="text-xl">جاري رسم اللوحة الفنية... قد يستغرق دقيقة</p>
-                  </div>
-                ) : (
-                  <img src={imageUrl} className="w-full rounded-xl border-4 border-[#1a1a1a]" />
-                )}
-              </div>
-            )}
-            
-            <button 
-              onClick={() => setShowResults(false)}
-              className="w-full bg-[#4ecdc4] text-[#1a1a1a] font-black text-xl py-4 rounded-xl border-4 border-[#1a1a1a]"
+    <div className="min-h-screen bg-gradient-to-br from-[#FFF5F0] to-[#FFE8D6] p-4 md:p-8" dir="rtl">
+      <div className="max-w-5xl mx-auto pt-6">
+        <AnimatePresence mode="wait">
+          {!showResults ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.5 }}
             >
-              🔄 قصة جديدة
-            </button>
-          </div>
-        )}
+              <Card className="overflow-hidden border-none shadow-2xl bg-white/80 backdrop-blur-md rounded-3xl">
+                <div className="bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] p-8 text-white text-center">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.2 }}
+                    className="inline-block p-4 bg-white/20 rounded-full mb-4"
+                  >
+                    <Sparkles className="size-12" />
+                  </motion.div>
+                  <h1 className="text-4xl md:text-5xl font-black mb-2 drop-shadow-sm">كتابنا السحري</h1>
+                  <p className="text-white/90 text-lg md:text-xl font-medium">اصنع قصة تعليمية ملهمة لطفلك في ثوانٍ</p>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-8 space-y-10">
+                  {/* Part 1: Identity */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                      <Label className="text-xl font-bold flex items-center gap-2 text-[#1a1a1a]">
+                        <UserIcon className="size-5 text-[#FF6B6B]" /> اسم البطل الصغير
+                      </Label>
+                      <Input 
+                        placeholder="ما هو اسم طفلك؟" 
+                        className="h-14 border-2 border-gray-100 focus:border-[#FF6B6B] rounded-2xl text-lg bg-gray-50/50"
+                        value={formData.childName} 
+                        onChange={e => setFormData({...formData, childName: e.target.value})} 
+                        required 
+                      />
+                    </div>
+                    <div className="space-y-4">
+                      <Label className="text-xl font-bold flex items-center gap-2 text-[#1a1a1a]">
+                        <Baby className="size-5 text-[#FF6B6B]" /> عمر البطل
+                      </Label>
+                      <Input 
+                        type="number"
+                        min={3}
+                        max={15}
+                        className="h-14 border-2 border-gray-100 focus:border-[#FF6B6B] rounded-2xl text-lg bg-gray-50/50"
+                        value={formData.childAge} 
+                        onChange={e => setFormData({...formData, childAge: parseInt(e.target.value)})} 
+                        required 
+                      />
+                    </div>
+                  </div>
+
+                  {/* Part 2: Educational Goal */}
+                  <div className="space-y-4">
+                    <Label className="text-xl font-bold flex items-center gap-2 text-[#1a1a1a]">
+                      <Target className="size-5 text-[#4ECDC4]" /> الهدف التعليمي أو التربوي
+                    </Label>
+                    <Input 
+                      placeholder="مثال: الشجاعة، الصدق، الأكل الصحي..." 
+                      className="h-14 border-2 border-gray-100 focus:border-[#4ECDC4] rounded-2xl text-lg bg-gray-50/50"
+                      value={formData.educationalGoal} 
+                      onChange={e => setFormData({...formData, educationalGoal: e.target.value})} 
+                      required 
+                    />
+                  </div>
+
+                  {/* Part 3: Challenge */}
+                  <div className="space-y-4">
+                    <Label className="text-xl font-bold flex items-center gap-2 text-[#1a1a1a]">
+                      <AlertCircle className="size-5 text-[#FF6B6B]" /> التحدي الذي يواجهه (وصف المشكلة)
+                    </Label>
+                    <Textarea 
+                      placeholder="أخبرنا المزيد عما يواجهه طفلك لنكتب قصة تساعده..." 
+                      className="border-2 border-gray-100 focus:border-[#FF6B6B] rounded-2xl text-lg bg-gray-50/50 min-h-[120px]"
+                      value={formData.problemDescription} 
+                      onChange={e => setFormData({...formData, problemDescription: e.target.value})} 
+                      required 
+                    />
+                  </div>
+
+                  {/* Part 4: Photo Selection */}
+                  <div className="space-y-4">
+                    <Label className="text-xl font-bold flex items-center gap-2 text-[#1a1a1a]">
+                      <Camera className="size-5 text-[#4ECDC4]" /> صورة البطل (للرسم السحري)
+                    </Label>
+                    <div className="relative group">
+                      <div className="flex flex-col items-center justify-center border-4 border-dashed border-gray-200 group-hover:border-[#4ECDC4] rounded-3xl p-10 transition-colors bg-gray-50/30">
+                        {photoPreview ? (
+                          <div className="relative">
+                            <img src={photoPreview} className="max-h-64 rounded-2xl shadow-lg border-4 border-white" />
+                            <Button 
+                              type="button"
+                              onClick={() => {setPhotoPreview(""); setFormData({...formData, childPhotoBase64: ""})}}
+                              className="absolute -top-3 -left-3 bg-red-500 hover:bg-red-600 rounded-full size-8 p-0"
+                            >
+                              ✕
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="text-center space-y-2">
+                            <div className="inline-block p-4 bg-white rounded-full shadow-sm mb-2 text-gray-400">
+                              <Camera className="size-8" />
+                            </div>
+                            <p className="text-gray-500 font-medium text-lg">اضغط هنا لرفع صورة طفلك</p>
+                            <p className="text-gray-400 text-sm italic">سيتم تحويل ملامحه إلى شخصية في القصة!</p>
+                          </div>
+                        )}
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handlePhotoChange}
+                          className="absolute inset-0 opacity-0 cursor-pointer" 
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Button 
+                      type="submit" 
+                      disabled={isCreating}
+                      className="w-full bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] text-white font-black text-2xl py-8 rounded-3xl shadow-xl shadow-orange-200 hover:shadow-orange-300 transition-all border-none"
+                    >
+                      {isCreating ? (
+                        <div className="flex items-center gap-3">
+                          <RefreshCw className="animate-spin size-7" />
+                          جاري تأليف الحكاية...
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <BookOpen className="size-7" />
+                          ابدأ المغامرة السحرية ✨
+                        </div>
+                      )}
+                    </Button>
+                  </motion.div>
+                </form>
+              </Card>
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", duration: 0.6 }}
+              className="space-y-10 pb-20"
+            >
+              {/* Story Section */}
+              <Card className="overflow-hidden border-none shadow-2xl bg-white rounded-3xl">
+                <div className="bg-[#4ECDC4] p-6 text-white flex justify-between items-center">
+                  <h2 className="text-3xl font-black flex items-center gap-2">
+                    <BookOpen className="size-8" /> حكاية {formData.childName} السحرية
+                  </h2>
+                  <div className="flex gap-2">
+                    <div className="px-4 py-1 bg-white/20 rounded-full text-sm font-bold">
+                      تم التأليف بالذكاء الاصطناعي
+                    </div>
+                  </div>
+                </div>
+                <div className="p-10">
+                  <div className="prose prose-2xl max-w-none text-[#2d3436] leading-[1.8] font-medium story-content">
+                    <Streamdown>{storyText}</Streamdown>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Image Section */}
+              {taskId && (
+                <Card className="overflow-hidden border-none shadow-2xl bg-white rounded-3xl">
+                  <div className="bg-[#FF9F43] p-6 text-white flex justify-between items-center">
+                    <h2 className="text-3xl font-black flex items-center gap-2">
+                      <Sparkles className="size-8" /> لوحة الحكاية
+                    </h2>
+                    {imageUrl && (
+                      <CheckCircle2 className="size-8 text-white/80" />
+                    )}
+                  </div>
+                  <div className="p-8">
+                    {!imageUrl ? (
+                      <div className="flex flex-col items-center justify-center py-20 text-center">
+                        <div className="relative">
+                          <div className="size-24 border-8 border-gray-100 border-t-[#FF9F43] rounded-full animate-spin"></div>
+                          <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-8 text-[#FF9F43]" />
+                        </div>
+                        <p className="mt-8 text-2xl font-bold text-gray-700">جاري رسم اللوحة الفنية...</p>
+                        <p className="text-gray-400 mt-2">نحول ملامح {formData.childName} إلى بطل حقيقي!</p>
+                      </div>
+                    ) : (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.5 }}
+                      >
+                        <img 
+                          src={imageUrl} 
+                          alt="Story Illustration"
+                          className="w-full rounded-2xl shadow-xl border-8 border-white ring-1 ring-gray-100" 
+                        />
+                      </motion.div>
+                    )}
+                  </div>
+                </Card>
+              )}
+              
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Button 
+                  onClick={() => setShowResults(false)}
+                  className="w-full bg-[#1a1a1a] text-white font-black text-2xl py-8 rounded-3xl shadow-xl hover:bg-[#333] transition-all border-none"
+                >
+                  <RefreshCw className="size-7 ml-2" />
+                  اصنع حكاية جديدة للمستقبل 🚀
+                </Button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 }
+
