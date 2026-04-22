@@ -15,9 +15,16 @@ const app = express();
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+// Log basic info for debugging in Vercel Runtime Logs
+console.log("Server starting... process.cwd():", process.cwd());
+
 // Register routes
-registerStorageProxy(app);
-registerOAuthRoutes(app);
+try {
+  registerStorageProxy(app);
+  registerOAuthRoutes(app);
+} catch (e) {
+  console.error("Failed to register routes:", e);
+}
 
 // tRPC
 app.use(
@@ -28,18 +35,30 @@ app.use(
   })
 );
 
-// Serve Static Files from dist/public (where Vite builds to)
-const distPath = path.join(process.cwd(), "dist", "public");
+// Serve Static Files
+// Vercel usually puts built assets in 'dist/public'
+const distPath = path.resolve(process.cwd(), "dist", "public");
+console.log("Checking distPath:", distPath);
 
-app.use(express.static(distPath));
+if (fs.existsSync(distPath)) {
+  console.log("distPath found! Serving static files.");
+  app.use(express.static(distPath));
+} else {
+  console.warn("distPath NOT found at:", distPath);
+}
 
 // Fallback to index.html for SPA routing
 app.use("*", (req, res) => {
+  // If it's an API request that wasn't caught, return 404
+  if (req.baseUrl.startsWith("/api")) {
+    return res.status(404).json({ error: "API route not found" });
+  }
+
   const indexPath = path.join(distPath, "index.html");
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(503).send("Frontend building... please refresh in a minute.");
+    res.status(503).send("Frontend assets are still building or missing. Please refresh in a moment.");
   }
 });
 
