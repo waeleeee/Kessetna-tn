@@ -59,17 +59,46 @@ export default function Home() {
     }
   }, [getStatusQuery.data]);
 
-  // Handle photo upload
+  // Handle photo upload with resizing
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        // Remove data:image/jpeg;base64, prefix
-        const base64Data = base64String.split(",")[1] || base64String;
-        setFormData({ ...formData, childPhotoBase64: base64Data });
-        setPhotoPreview(base64String);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          // Resize logic
+          const MAX_WIDTH = 512;
+          const MAX_HEIGHT = 512;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          const resizedBase64 = canvas.toDataURL("image/jpeg", 0.7);
+          const base64Data = resizedBase64.split(",")[1];
+          
+          setFormData({ ...formData, childPhotoBase64: base64Data });
+          setPhotoPreview(resizedBase64);
+          console.log("[Photo] Resized to:", width, "x", height);
+        };
+        img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
     }
