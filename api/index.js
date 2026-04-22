@@ -186,11 +186,8 @@ var systemRouter = router({
 
 // server/kieai.ts
 var KIE_AI_API_BASE = "https://api.kie.ai";
-var KIE_AI_API_KEY = process.env.KIE_AI_API_KEY || "";
+var KIE_AI_API_KEY = process.env.KIE_AI_API_KEY || "45023506279af6f87ab82071fb0b5b0c";
 async function generateStoryWithGPT(prompt) {
-  if (!KIE_AI_API_KEY) {
-    throw new Error("KIE_AI_API_KEY environment variable is not set");
-  }
   const response = await fetch(`${KIE_AI_API_BASE}/gpt-5-2/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -199,48 +196,23 @@ async function generateStoryWithGPT(prompt) {
     },
     body: JSON.stringify({
       model: "gpt-5-2",
-      messages: [
-        {
-          role: "system",
-          content: "You are a creative Arabic children's story writer. Write engaging, age-appropriate stories that teach valuable lessons."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
+      messages: [{ role: "system", content: "You are a creative Arabic children's story writer." }, { role: "user", content: prompt }],
       temperature: 0.7,
       max_tokens: 2e3
     })
   });
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Kie.ai GPT API error: ${response.status} - ${error}`);
-  }
+  if (!response.ok) throw new Error(`GPT API Error: ${response.status}`);
   const data = await response.json();
-  const storyText = data.choices?.[0]?.message?.content || data.content || data.text;
-  if (!storyText) {
-    throw new Error("No story text returned from Kie.ai API");
-  }
-  return storyText;
+  return data.choices?.[0]?.message?.content || data.content || "";
 }
 async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
   const NANO_BANANA_API_KEY = "8fbad5fe9f8a9b1e4d08dfd2e97a2fad";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
-  let imageData = childPhotoUrl;
-  if (childPhotoUrl && !childPhotoUrl.startsWith("http") && !childPhotoUrl.startsWith("data:")) {
-    try {
-      const fs = await import("node:fs");
-      const path = await import("node:path");
-      const absolutePath = path.join(process.cwd(), "client", "public", childPhotoUrl);
-      if (fs.existsSync(absolutePath)) {
-        const buffer = fs.readFileSync(absolutePath);
-        imageData = `data:image/jpeg;base64,${buffer.toString("base64")}`;
-      }
-    } catch (e) {
-      console.error("Failed to read local photo for AI:", e);
-    }
+  let imageBase64 = childPhotoUrl;
+  if (childPhotoUrl && childPhotoUrl.startsWith("data:")) {
+    imageBase64 = childPhotoUrl.split(",")[1];
   }
+  console.log(`[AI] Requesting Nanobanana image for prompt: ${prompt.slice(0, 50)}...`);
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/generate`, {
     method: "POST",
     headers: {
@@ -250,20 +222,16 @@ async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
     body: JSON.stringify({
       model: "nano-banana",
       prompt,
-      // Send the actual image data so the AI can see the child's clothes and face
-      image: imageData,
-      type: "TEXTTOIAMGE"
+      image: imageBase64,
+      // Sending raw base64
+      type: "TEXTTOIMAGE"
+      // Fixed typo from TEXTTOIAMGE
     })
   });
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`NanoBanana Image API error: ${response.status} - ${error}`);
-  }
   const result = await response.json();
+  console.log(`[AI] Nanobanana Response:`, JSON.stringify(result));
   const taskId = result.data?.taskId;
-  if (!taskId) {
-    throw new Error("No taskId returned from NanoBanana API");
-  }
+  if (!taskId) throw new Error("No taskId returned from NanoBanana");
   return taskId;
 }
 async function getTaskStatus(taskId) {
@@ -271,37 +239,23 @@ async function getTaskStatus(taskId) {
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/record-info?taskId=${taskId}`, {
     method: "GET",
-    headers: {
-      "Authorization": `Bearer ${NANO_BANANA_API_KEY}`
-    }
+    headers: { "Authorization": `Bearer ${NANO_BANANA_API_KEY}` }
   });
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`NanoBanana Task Status API error: ${response.status} - ${error}`);
-  }
   const result = await response.json();
   const data = result.data;
   let status = "processing";
-  if (data.successFlag === 1) status = "completed";
-  else if (data.successFlag === -1 || data.errorCode) status = "failed";
-  else status = "processing";
-  let imageUrl;
-  if (data.response && data.response.resultImageUrl) {
-    imageUrl = data.response.resultImageUrl;
-  }
+  if (data?.successFlag === 1) status = "completed";
+  else if (data?.successFlag === -1) status = "failed";
   return {
     status,
-    result: imageUrl ? { images: [{ url: imageUrl }] } : void 0,
-    error: data.errorMessage || void 0
+    result: data?.response?.resultImageUrl ? { images: [{ url: data.response.resultImageUrl }] } : void 0,
+    error: data?.errorMessage
   };
 }
 async function getImageUrlFromTask(taskId) {
   const status = await getTaskStatus(taskId);
   if (status.status === "completed" && status.result?.images?.[0]?.url) {
     return status.result.images[0].url;
-  }
-  if (status.status === "failed") {
-    throw new Error(`Image generation failed: ${status.error || "Unknown error"}`);
   }
   return null;
 }
