@@ -55,13 +55,19 @@ export function registerOAuthRoutes(app: Express) {
   app.get("/api/auth/local", async (req: Request, res: Response) => {
     try {
       const mockOpenId = "local-user";
-      await db.upsertUser({
-        openId: mockOpenId,
-        name: "Local Developer",
-        email: "local@example.com",
-        loginMethod: "local",
-        lastSignedIn: new Date(),
-      });
+
+      // Try to save to DB but don't fail if DB isn't ready yet
+      try {
+        await db.upsertUser({
+          openId: mockOpenId,
+          name: "Local Developer",
+          email: "local@example.com",
+          loginMethod: "local",
+          lastSignedIn: new Date(),
+        });
+      } catch (dbErr) {
+        console.warn("[Auth] DB upsert skipped (DB may not be initialized yet):", dbErr.message);
+      }
 
       const sessionToken = await sdk.createSessionToken(mockOpenId, {
         name: "Local Developer",
@@ -74,7 +80,7 @@ export function registerOAuthRoutes(app: Express) {
       res.redirect(302, "/");
     } catch (error) {
       console.error("[Auth] Local login failed", error);
-      res.status(500).json({ error: "Local login failed" });
+      res.status(500).json({ error: "Local login failed", detail: error.message });
     }
   });
 }
