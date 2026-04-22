@@ -237,20 +237,17 @@ async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
   const NANO_BANANA_API_KEY = "b7aa7cee46af40269c2d8a7d036cbfb0";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
   const safePrompt = `
-Educational children's book illustration, vibrant Ghibli-inspired anime art.
-Character: The child from the attached reference photo. MUST MATCH FACE AND CLOTHING EXACTLY.
-Action: ${prompt}
-Setting: Sidi Bou Said, Tunisia, white walls, blue windows, mediterranean atmosphere.
-Style: Professional illustration, clean lines, bright colors, friendly and safe for children.
+Anime style, a young Tunisian boy with a friendly smile, ${prompt}, 
+wearing traditional Tunisian details, vibrant colors, Studio Ghibli aesthetic, 
+Tunisian story theme, high quality, detailed background.
   `.trim();
   console.log(`[AI] Nanobanana Safe Request with originImageUrl: ${childPhotoUrl}`);
   const requestBody = {
-    model: "nano-banana",
     prompt: safePrompt,
-    originImageUrl: childPhotoUrl,
-    type: "TEXTTOIAMGE",
     numImages: 1,
-    watermarkFlag: true
+    type: "IMAGETOIAMGE",
+    imageUrls: [childPhotoUrl],
+    callBackUrl: "https://example.com/callback"
   };
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/generate`, {
     method: "POST",
@@ -277,7 +274,7 @@ async function getTaskStatus(taskId) {
   const data = result.data;
   let status = "processing";
   if (data?.successFlag === 1) status = "completed";
-  else if (data?.successFlag === -1) status = "failed";
+  else if (data?.successFlag === -1 || data?.successFlag === 3) status = "failed";
   return {
     status,
     result: data?.response?.resultImageUrl ? { images: [{ url: data.response.resultImageUrl }] } : void 0,
