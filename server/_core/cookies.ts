@@ -44,7 +44,7 @@ export function getSessionCookieOptions(
   return {
     httpOnly: true,
     path: "/",
-    sameSite: isSecure ? "none" : "lax",
+    sameSite: "lax",
     secure: isSecure,
   };
 }
