@@ -208,14 +208,19 @@ async function generateStoryWithGPT(prompt) {
 async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
   const NANO_BANANA_API_KEY = "8fbad5fe9f8a9b1e4d08dfd2e97a2fad";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
-  console.log(`[AI] Nanobanana Request with originImageUrl: ${childPhotoUrl}`);
+  const safePrompt = `
+A heroic young explorer in a premium educational book illustration.
+Sidi Bou Said, Tunisia setting with white walls and blue doors.
+MATCH THE HERO'S FACE AND CLOTHING FROM THE REFERENCE PHOTO: ${childPhotoUrl}
+Style: Family-friendly Ghibli-inspired art, vibrant colors, clean lines, safe for school children.
+Action: ${prompt.slice(0, 300)}
+  `.trim();
+  console.log(`[AI] Nanobanana Safe Request with originImageUrl: ${childPhotoUrl}`);
   const requestBody = {
     model: "nano-banana",
-    prompt,
+    prompt: safePrompt,
     originImageUrl: childPhotoUrl,
-    // The KEY field for reference images
     type: "TEXTTOIAMGE",
-    // The magical typo
     numImages: 1,
     watermarkFlag: true
   };
