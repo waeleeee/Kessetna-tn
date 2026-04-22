@@ -2,14 +2,9 @@
   "version": 2,
   "buildCommand": "vite build",
   "installCommand": "pnpm install",
-  "functions": {
-    "api/index.ts": {
-      "includeFiles": "dist/**",
-      "memory": 1024
-    }
-  },
+  "public": true,
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/api/index" }
+    { "source": "/((?!assets/|favicon.ico|index.html).*)", "destination": "/api/index" }
   ]
 }

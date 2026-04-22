@@ -8,14 +8,9 @@ const app = express();
 
 app.use(express.json());
 
-// 1. HEALTH CHECK (Working!)
+// 1. HEALTH CHECK
 app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
-    time: new Date().toISOString(), 
-    cwd: process.cwd(),
-    dirname: __dirname
-  });
+  res.json({ status: "ok", time: new Date().toISOString() });
 });
 
 // 2. LAZY LOAD HEAVY ROUTERS
@@ -26,7 +21,7 @@ app.use("/api/trpc", async (req, res, next) => {
     const { createContext } = await import("../server/_core/context");
     return createExpressMiddleware({ router: appRouter, createContext })(req, res, next);
   } catch (e) {
-    res.status(500).json({ error: "tRPC failed to load", details: e.message });
+    res.status(500).json({ error: "tRPC error", details: e.message });
   }
 });
 
@@ -37,38 +32,29 @@ app.use("/api/auth", async (req, res, next) => {
     registerOAuthRoutes(authApp);
     return authApp(req, res, next);
   } catch (e) {
-    res.status(500).json({ error: "Auth failed to load" });
+    res.status(500).json({ error: "Auth error" });
   }
 });
 
-// 3. STATIC FILES - Updated path logic
-// On Vercel, the 'api' folder is often moved. We check both possibilities.
-const possiblePaths = [
-  path.join(process.cwd(), "dist", "public"),
-  path.join(__dirname, "..", "dist", "public"),
-  path.join(__dirname, "dist", "public")
-];
-
-let distPath = possiblePaths[0];
-for (const p of possiblePaths) {
-  if (fs.existsSync(p)) {
-    distPath = p;
-    break;
+// 3. STORAGE PROXY
+app.use("/manus-storage", async (req, res, next) => {
+  try {
+    const { registerStorageProxy } = await import("../server/_core/storageProxy");
+    const storageApp = express();
+    registerStorageProxy(storageApp);
+    return storageApp(req, res, next);
+  } catch (e) {
+    res.status(500).send("Storage error");
   }
-}
+});
 
-app.use(express.static(distPath));
-
+// For any other request, return index.html (SPA fallback)
+// This is handled by Vercel rewrites, but we add it here just in case.
 app.get("*", (req, res) => {
   if (req.url.startsWith("/api")) return res.status(404).send("API not found");
   
-  const indexPath = path.join(distPath, "index.html");
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    // If index.html is missing, let's at least show the path we tried
-    res.status(503).send(`Frontend assets not found. Path: ${distPath}`);
-  }
+  // Just send a 404 for anything else caught by the bridge
+  res.status(404).send("Not found");
 });
 
 export default app;
