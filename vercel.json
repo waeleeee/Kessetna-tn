@@ -2,7 +2,7 @@
   "version": 2,
   "buildCommand": "vite build",
   "installCommand": "pnpm install",
-  "public": true,
+  "outputDirectory": "dist/public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/((?!assets/|favicon.ico|index.html).*)", "destination": "/api/index" }
