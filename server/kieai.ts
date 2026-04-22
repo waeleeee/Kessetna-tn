@@ -34,7 +34,7 @@ export async function generateImageWithNanoBanana(
   prompt: string,
   childPhotoUrl?: string
 ): Promise<string> {
-  const NANO_BANANA_API_KEY = "8fbad5fe9f8a9b1e4d08dfd2e97a2fad";
+  const NANO_BANANA_API_KEY = "b7aa7cee46af40269c2d8a7d036cbfb0";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
 
   // SAFETY-FIRST PROMPT FOR TUNISIAN EDUCATIONAL STYLE
@@ -79,7 +79,7 @@ Action: ${prompt.slice(0, 300)}
  * Poll task status
  */
 export async function getTaskStatus(taskId: string): Promise<any> {
-  const NANO_BANANA_API_KEY = "8fbad5fe9f8a9b1e4d08dfd2e97a2fad";
+  const NANO_BANANA_API_KEY = "b7aa7cee46af40269c2d8a7d036cbfb0";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
 
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/record-info?taskId=${taskId}`, {
