@@ -1,10 +1,10 @@
 {
   "version": 2,
-  "buildCommand": "vite build",
+  "buildCommand": "pnpm run build",
   "installCommand": "pnpm install",
   "outputDirectory": "dist/public",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/((?!assets/|favicon.ico|index.html).*)", "destination": "/api/index" }
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/((?!assets/|favicon.ico|index.html).*)", "destination": "/api/index.js" }
   ]
 }
