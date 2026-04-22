@@ -3,62 +3,57 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "../server/_core/oauth";
-import { registerStorageProxy } from "../server/_core/storageProxy";
-import { appRouter } from "../server/routers";
-import { createContext } from "../server/_core/context";
 
 const app = express();
 
-// Body parsing
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use(express.json());
 
-// Log basic info for debugging in Vercel Runtime Logs
-console.log("Server starting... process.cwd():", process.cwd());
+// 1. HEALTH CHECK (No dependencies)
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", time: new Date().toISOString(), env: process.env.NODE_ENV });
+});
 
-// Register routes
-try {
-  registerStorageProxy(app);
-  registerOAuthRoutes(app);
-} catch (e) {
-  console.error("Failed to register routes:", e);
-}
-
-// tRPC
-app.use(
-  "/api/trpc",
-  createExpressMiddleware({
-    router: appRouter,
-    createContext,
-  })
-);
-
-// Serve Static Files
-// Vercel usually puts built assets in 'dist/public'
-const distPath = path.resolve(process.cwd(), "dist", "public");
-console.log("Checking distPath:", distPath);
-
-if (fs.existsSync(distPath)) {
-  console.log("distPath found! Serving static files.");
-  app.use(express.static(distPath));
-} else {
-  console.warn("distPath NOT found at:", distPath);
-}
-
-// Fallback to index.html for SPA routing
-app.use("*", (req, res) => {
-  // If it's an API request that wasn't caught, return 404
-  if (req.baseUrl.startsWith("/api")) {
-    return res.status(404).json({ error: "API route not found" });
+// 2. LAZY LOAD HEAVY ROUTERS
+// We only import these when they are actually called to prevent startup crashes
+app.use("/api/trpc", async (req, res, next) => {
+  try {
+    const { createExpressMiddleware } = await import("@trpc/server/adapters/express");
+    const { appRouter } = await import("../server/routers");
+    const { createContext } = await import("../server/_core/context");
+    
+    return createExpressMiddleware({
+      router: appRouter,
+      createContext,
+    })(req, res, next);
+  } catch (e) {
+    console.error("tRPC initialization error:", e);
+    res.status(500).json({ error: "tRPC failed to load", details: e.message });
   }
+});
 
+app.use("/api/auth", async (req, res, next) => {
+  try {
+    const { registerOAuthRoutes } = await import("../server/_core/oauth");
+    const authApp = express();
+    registerOAuthRoutes(authApp);
+    return authApp(req, res, next);
+  } catch (e) {
+    res.status(500).json({ error: "Auth failed to load" });
+  }
+});
+
+// 3. STATIC FILES
+const distPath = path.resolve(process.cwd(), "dist", "public");
+app.use(express.static(distPath));
+
+app.get("*", (req, res) => {
+  if (req.url.startsWith("/api")) return res.status(404).send("API not found");
+  
   const indexPath = path.join(distPath, "index.html");
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(503).send("Frontend assets are still building or missing. Please refresh in a moment.");
+    res.status(503).send("Building frontend... please refresh.");
   }
 });
 
