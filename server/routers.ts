@@ -71,11 +71,23 @@ export const appRouter = router({
           };
           memoryStore.stories.set(storyId, storyObj);
 
-          // 4. Image Generation with Bypass
+          // 4. Images with Absolute URL for AI
           if (childPhotoUrl) {
+            const protocol = ctx.req.headers["x-forwarded-proto"] || "http";
+            const host = ctx.req.headers.host;
+            const absoluteChildPhotoUrl = childPhotoUrl.startsWith("http") 
+              ? childPhotoUrl 
+              : `${protocol}://${host}${childPhotoUrl}`;
+
+            const imagePrompt = `
+CRITICAL: HIGH CHARACTER CONSISTENCY REQUIRED.
+MATCH THE CHILD'S FACE AND CLOTHING EXACTLY FROM THE PHOTO.
+Scene: ${storyText.slice(0, 200)}
+Style: Premium Anime, Sidi Bou Said setting.
+            `.trim();
+
             try {
-              const imagePrompt = `Premium anime illustration of ${input.childName} in Tunisia...`.trim();
-              const taskId = await generateImageWithNanoBanana(imagePrompt, childPhotoUrl);
+              const taskId = await generateImageWithNanoBanana(imagePrompt, absoluteChildPhotoUrl);
               const imgObj = { storyId, taskId, status: "processing", url: null };
               memoryStore.images.set(storyId, [imgObj]);
             } catch (e) { console.error("Image generation failed:", e); }

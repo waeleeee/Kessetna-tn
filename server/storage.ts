@@ -1,32 +1,31 @@
 // @ts-nocheck
-import { ENV } from "./_core/env";
+import { imageMemoryStore } from "./imageStore";
 
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
   contentType = "image/jpeg",
 ): Promise<{ key: string; url: string }> {
-  // Vercel is read-only, so for quick testing we return a Data URL (Base64)
-  // This bypasses the need for S3 or a local folder.
+  // Generate a short ID for memory store
+  const id = Math.random().toString(36).substring(7) + ".jpg";
   
-  const base64 = typeof data === "string" 
-    ? data 
-    : Buffer.from(data).toString("base64");
+  const buffer = typeof data === "string" 
+    ? Buffer.from(data, "base64") 
+    : Buffer.from(data);
     
-  const url = base64.startsWith("data:") 
-    ? base64 
-    : `data:${contentType};base64,${base64}`;
-    
+  imageMemoryStore.set(id, buffer);
+  
+  // Return the relative URL. The router will convert this to an absolute one for the AI.
   return { 
-    key: `test_${Date.now()}.jpg`, 
-    url: url 
+    key: id, 
+    url: `/api/img-serve/${id}` 
   };
 }
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
-  return { key: relKey, url: relKey };
+  return { key: relKey, url: `/api/img-serve/${relKey}` };
 }
 
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
-  return relKey;
+  return `/api/img-serve/${relKey}`;
 }

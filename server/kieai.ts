@@ -28,7 +28,7 @@ export async function generateStoryWithGPT(prompt: string): Promise<string> {
 }
 
 /**
- * Generate image using Kie.ai Nano Banana API (Image-to-Image Mode)
+ * Generate image using Kie.ai Nano Banana API (Image Reference Mode)
  */
 export async function generateImageWithNanoBanana(
   prompt: string,
@@ -37,22 +37,7 @@ export async function generateImageWithNanoBanana(
   const NANO_BANANA_API_KEY = "8fbad5fe9f8a9b1e4d08dfd2e97a2fad";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
 
-  // Clean the image data - remove prefix if it's a data URL
-  let imageBase64 = childPhotoUrl;
-  if (childPhotoUrl && childPhotoUrl.startsWith("data:")) {
-    imageBase64 = childPhotoUrl.split(",")[1];
-  }
-
-  // ENHANCE PROMPT FOR IMAGE-TO-IMAGE TUNISIAN ANIME STYLE
-  const enhancedPrompt = `
-Tunisian child character in Anime/Ghibli style. 
-EXACT FACE AND CLOTHING MATCH from reference image.
-Setting: Traditional Tunisian Sidi Bou Said, blue doors, white walls.
-Illustration style: Premium anime, soft lighting, vibrant, detailed.
-Scene: ${prompt}
-  `.trim();
-
-  console.log(`[AI] Requesting Nanobanana IMAGETOIMAGE for prompt: ${prompt.slice(0, 50)}...`);
+  console.log(`[AI] Requesting Nanobanana with Image Reference URL: ${childPhotoUrl}`);
 
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/generate`, {
     method: "POST",
@@ -62,9 +47,9 @@ Scene: ${prompt}
     },
     body: JSON.stringify({
       model: "nano-banana",
-      prompt: enhancedPrompt,
-      image: imageBase64, // The child's photo as reference
-      type: "IMAGETOIMAGE" // Explicitly requested by user
+      prompt: prompt,
+      image: childPhotoUrl, // Passing the PUBLIC URL of the child's photo
+      type: "TEXTTOIAMGE" // RESTORED THE TYPO as requested by user
     }),
   });
 
@@ -72,7 +57,7 @@ Scene: ${prompt}
   console.log(`[AI] Nanobanana Response:`, JSON.stringify(result));
   
   const taskId = result.data?.taskId;
-  if (!taskId) throw new Error("No taskId returned from NanoBanana");
+  if (!taskId) throw new Error(`NanoBanana Error: ${result.msg || "No taskId returned"}`);
   return taskId;
 }
 

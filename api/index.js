@@ -208,18 +208,7 @@ async function generateStoryWithGPT(prompt) {
 async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
   const NANO_BANANA_API_KEY = "8fbad5fe9f8a9b1e4d08dfd2e97a2fad";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
-  let imageBase64 = childPhotoUrl;
-  if (childPhotoUrl && childPhotoUrl.startsWith("data:")) {
-    imageBase64 = childPhotoUrl.split(",")[1];
-  }
-  const enhancedPrompt = `
-Tunisian child character in Anime/Ghibli style. 
-EXACT FACE AND CLOTHING MATCH from reference image.
-Setting: Traditional Tunisian Sidi Bou Said, blue doors, white walls.
-Illustration style: Premium anime, soft lighting, vibrant, detailed.
-Scene: ${prompt}
-  `.trim();
-  console.log(`[AI] Requesting Nanobanana IMAGETOIMAGE for prompt: ${prompt.slice(0, 50)}...`);
+  console.log(`[AI] Requesting Nanobanana with Image Reference URL: ${childPhotoUrl}`);
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/generate`, {
     method: "POST",
     headers: {
@@ -228,17 +217,17 @@ Scene: ${prompt}
     },
     body: JSON.stringify({
       model: "nano-banana",
-      prompt: enhancedPrompt,
-      image: imageBase64,
-      // The child's photo as reference
-      type: "IMAGETOIMAGE"
-      // Explicitly requested by user
+      prompt,
+      image: childPhotoUrl,
+      // Passing the PUBLIC URL of the child's photo
+      type: "TEXTTOIAMGE"
+      // RESTORED THE TYPO as requested by user
     })
   });
   const result = await response.json();
   console.log(`[AI] Nanobanana Response:`, JSON.stringify(result));
   const taskId = result.data?.taskId;
-  if (!taskId) throw new Error("No taskId returned from NanoBanana");
+  if (!taskId) throw new Error(`NanoBanana Error: ${result.msg || "No taskId returned"}`);
   return taskId;
 }
 async function getTaskStatus(taskId) {
@@ -267,13 +256,17 @@ async function getImageUrlFromTask(taskId) {
   return null;
 }
 
+// server/imageStore.ts
+var imageMemoryStore = /* @__PURE__ */ new Map();
+
 // server/storage.ts
 async function storagePut(relKey, data, contentType = "image/jpeg") {
-  const base64 = typeof data === "string" ? data : Buffer.from(data).toString("base64");
-  const url = base64.startsWith("data:") ? base64 : `data:${contentType};base64,${base64}`;
+  const id = Math.random().toString(36).substring(7) + ".jpg";
+  const buffer = typeof data === "string" ? Buffer.from(data, "base64") : Buffer.from(data);
+  imageMemoryStore.set(id, buffer);
   return {
-    key: `test_${Date.now()}.jpg`,
-    url
+    key: id,
+    url: `/api/img-serve/${id}`
   };
 }
 
@@ -331,9 +324,17 @@ var appRouter = router({
         };
         memoryStore.stories.set(storyId, storyObj);
         if (childPhotoUrl) {
+          const protocol = ctx.req.headers["x-forwarded-proto"] || "http";
+          const host = ctx.req.headers.host;
+          const absoluteChildPhotoUrl = childPhotoUrl.startsWith("http") ? childPhotoUrl : `${protocol}://${host}${childPhotoUrl}`;
+          const imagePrompt = `
+CRITICAL: HIGH CHARACTER CONSISTENCY REQUIRED.
+MATCH THE CHILD'S FACE AND CLOTHING EXACTLY FROM THE PHOTO.
+Scene: ${storyText.slice(0, 200)}
+Style: Premium Anime, Sidi Bou Said setting.
+            `.trim();
           try {
-            const imagePrompt = `Premium anime illustration of ${input.childName} in Tunisia...`.trim();
-            const taskId = await generateImageWithNanoBanana(imagePrompt, childPhotoUrl);
+            const taskId = await generateImageWithNanoBanana(imagePrompt, absoluteChildPhotoUrl);
             const imgObj = { storyId, taskId, status: "processing", url: null };
             memoryStore.images.set(storyId, [imgObj]);
           } catch (e) {
@@ -866,6 +867,12 @@ app.get("/api/health", (req, res) => {
     db_configured: !!process.env.DATABASE_URL,
     auth_mode: process.env.USE_LOCAL_AUTH === "true" ? "local" : "oauth"
   });
+});
+app.get("/api/img-serve/:id", (req, res) => {
+  const buffer = imageMemoryStore.get(req.params.id);
+  if (!buffer) return res.status(404).send("Not found");
+  res.setHeader("Content-Type", "image/jpeg");
+  res.send(buffer);
 });
 registerOAuthRoutes(app);
 registerStorageProxy(app);
