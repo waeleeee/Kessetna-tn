@@ -28,7 +28,7 @@ export async function generateStoryWithGPT(prompt: string): Promise<string> {
 }
 
 /**
- * Generate image using Kie.ai Nano Banana API
+ * Generate image using Kie.ai Nano Banana API (Image-to-Image Mode)
  */
 export async function generateImageWithNanoBanana(
   prompt: string,
@@ -43,7 +43,16 @@ export async function generateImageWithNanoBanana(
     imageBase64 = childPhotoUrl.split(",")[1];
   }
 
-  console.log(`[AI] Requesting Nanobanana image for prompt: ${prompt.slice(0, 50)}...`);
+  // ENHANCE PROMPT FOR IMAGE-TO-IMAGE TUNISIAN ANIME STYLE
+  const enhancedPrompt = `
+Tunisian child character in Anime/Ghibli style. 
+EXACT FACE AND CLOTHING MATCH from reference image.
+Setting: Traditional Tunisian Sidi Bou Said, blue doors, white walls.
+Illustration style: Premium anime, soft lighting, vibrant, detailed.
+Scene: ${prompt}
+  `.trim();
+
+  console.log(`[AI] Requesting Nanobanana IMAGETOIMAGE for prompt: ${prompt.slice(0, 50)}...`);
 
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/generate`, {
     method: "POST",
@@ -53,9 +62,9 @@ export async function generateImageWithNanoBanana(
     },
     body: JSON.stringify({
       model: "nano-banana",
-      prompt,
-      image: imageBase64, // Sending raw base64
-      type: "TEXTTOIMAGE" // Fixed typo from TEXTTOIAMGE
+      prompt: enhancedPrompt,
+      image: imageBase64, // The child's photo as reference
+      type: "IMAGETOIMAGE" // Explicitly requested by user
     }),
   });
 

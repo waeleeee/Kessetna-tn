@@ -212,7 +212,14 @@ async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
   if (childPhotoUrl && childPhotoUrl.startsWith("data:")) {
     imageBase64 = childPhotoUrl.split(",")[1];
   }
-  console.log(`[AI] Requesting Nanobanana image for prompt: ${prompt.slice(0, 50)}...`);
+  const enhancedPrompt = `
+Tunisian child character in Anime/Ghibli style. 
+EXACT FACE AND CLOTHING MATCH from reference image.
+Setting: Traditional Tunisian Sidi Bou Said, blue doors, white walls.
+Illustration style: Premium anime, soft lighting, vibrant, detailed.
+Scene: ${prompt}
+  `.trim();
+  console.log(`[AI] Requesting Nanobanana IMAGETOIMAGE for prompt: ${prompt.slice(0, 50)}...`);
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/generate`, {
     method: "POST",
     headers: {
@@ -221,11 +228,11 @@ async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
     },
     body: JSON.stringify({
       model: "nano-banana",
-      prompt,
+      prompt: enhancedPrompt,
       image: imageBase64,
-      // Sending raw base64
-      type: "TEXTTOIMAGE"
-      // Fixed typo from TEXTTOIAMGE
+      // The child's photo as reference
+      type: "IMAGETOIMAGE"
+      // Explicitly requested by user
     })
   });
   const result = await response.json();
