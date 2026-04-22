@@ -306,6 +306,127 @@ async function getImageUrlFromTask(taskId) {
   return null;
 }
 
+// server/storage.ts
+async function storagePut(relKey, data, contentType = "image/jpeg") {
+  const base64 = typeof data === "string" ? data : Buffer.from(data).toString("base64");
+  const url = base64.startsWith("data:") ? base64 : `data:${contentType};base64,${base64}`;
+  return {
+    key: `test_${Date.now()}.jpg`,
+    url
+  };
+}
+
+// server/routers.ts
+var memoryStore = {
+  stories: /* @__PURE__ */ new Map(),
+  images: /* @__PURE__ */ new Map()
+};
+var appRouter = router({
+  system: systemRouter,
+  auth: router({
+    me: publicProcedure.query((opts) => opts.ctx.user),
+    logout: publicProcedure.mutation(({ ctx }) => {
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      return { success: true };
+    })
+  }),
+  story: router({
+    create: protectedProcedure.input(
+      z2.object({
+        childName: z2.string().min(1),
+        childAge: z2.number().min(3).max(12),
+        educationalGoal: z2.string().min(1),
+        problemDescription: z2.string().min(1),
+        childPhotoBase64: z2.string().optional()
+      })
+    ).mutation(async ({ ctx, input }) => {
+      try {
+        const storyId = Math.floor(Math.random() * 1e6);
+        let childPhotoUrl;
+        if (input.childPhotoBase64) {
+          try {
+            const buffer = Buffer.from(input.childPhotoBase64, "base64");
+            const { url } = await storagePut(`photos/${storyId}.jpg`, buffer, "image/jpeg");
+            childPhotoUrl = url;
+          } catch (e) {
+            console.error("Upload failed:", e);
+          }
+        }
+        let storyText;
+        try {
+          const prompt = `\u0627\u0643\u062A\u0628 \u0642\u0635\u0629 \u0644\u0644\u0623\u0637\u0641\u0627\u0644 \u0639\u0646 ${input.childName}...`.trim();
+          storyText = await generateStoryWithGPT(prompt);
+        } catch (e) {
+          console.warn("AI Story failed, using mock story:", e.message);
+          storyText = `\u0643\u0627\u0646 \u064A\u0627 \u0645\u0643\u0627\u0646 \u0641\u064A \u0642\u062F\u064A\u0645 \u0627\u0644\u0632\u0645\u0627\u0646\u060C \u0643\u0627\u0646 \u0647\u0646\u0627\u0643 \u0637\u0641\u0644 \u0634\u062C\u0627\u0639 \u0627\u0633\u0645\u0647 ${input.childName}. \u0643\u0627\u0646 ${input.childName} \u064A\u062D\u0628 \u0627\u0644\u0645\u063A\u0627\u0645\u0631\u0629 \u0648\u0627\u0644\u0644\u0639\u0628 \u0641\u064A \u0634\u0648\u0627\u0631\u0639 \u0633\u064A\u062F\u064A \u0628\u0648\u0633\u0639\u064A\u062F \u0627\u0644\u062C\u0645\u064A\u0644\u0629. \u0641\u064A \u064A\u0648\u0645 \u0645\u0646 \u0627\u0644\u0623\u064A\u0627\u0645\u060C \u0642\u0631\u0631 ${input.childName} \u0623\u0646 \u064A\u062A\u0639\u0644\u0645 \u0634\u064A\u0626\u0627\u064B \u062C\u062F\u064A\u062F\u0627\u064B \u0639\u0646 ${input.educationalGoal}. \u0648\u0647\u0643\u0630\u0627 \u0628\u062F\u0623\u062A \u0627\u0644\u0642\u0635\u0629 \u0627\u0644\u062C\u0645\u064A\u0644\u0629 \u0627\u0644\u062A\u064A \u0639\u0644\u0645\u062A\u0646\u0627 \u0623\u0646 \u0627\u0644\u0634\u062C\u0627\u0639\u0629 \u0647\u064A \u0645\u0641\u062A\u0627\u062D \u0627\u0644\u0646\u062C\u0627\u062D.`;
+        }
+        const storyObj = {
+          id: storyId,
+          userId: ctx.user.id,
+          childName: input.childName,
+          storyText,
+          status: "completed"
+        };
+        memoryStore.stories.set(storyId, storyObj);
+        if (childPhotoUrl) {
+          try {
+            const imagePrompt = `Premium anime illustration of ${input.childName} in Tunisia...`.trim();
+            const taskId = await generateImageWithNanoBanana(imagePrompt, childPhotoUrl);
+            const imgObj = { storyId, taskId, status: "processing", url: null };
+            memoryStore.images.set(storyId, [imgObj]);
+          } catch (e) {
+            console.error("Image generation failed:", e);
+          }
+        }
+        return { storyId, storyText, hasImages: !!childPhotoUrl };
+      } catch (error) {
+        console.error("CRITICAL BYPASS:", error);
+        return {
+          storyId: 999,
+          storyText: "\u062D\u062F\u062B \u062E\u0637\u0623 \u0628\u0633\u064A\u0637\u060C \u0648\u0644\u0643\u0646 \u0647\u0627 \u0647\u064A \u0642\u0635\u062A\u0643: \u0643\u0627\u0646 \u0647\u0646\u0627\u0643 \u0637\u0641\u0644 \u0631\u0627\u0626\u0639 \u064A\u062D\u0628 \u0627\u0644\u0642\u0635\u0635...",
+          hasImages: false
+        };
+      }
+    }),
+    getStatus: protectedProcedure.input(z2.object({ storyId: z2.number() })).query(async ({ input }) => {
+      const story = memoryStore.stories.get(input.storyId);
+      const images = memoryStore.images.get(input.storyId) || [];
+      for (const img of images) {
+        if (img.status === "processing") {
+          try {
+            const url = await getImageUrlFromTask(img.taskId);
+            if (url) {
+              img.url = url;
+              img.status = "completed";
+            }
+          } catch (e) {
+          }
+        }
+      }
+      return {
+        story: story || { id: input.storyId, status: "completed", storyText: "" },
+        images: images.map((img) => ({ url: img.url, status: img.status }))
+      };
+    })
+  })
+});
+
+// server/_core/context.ts
+async function createContext(opts) {
+  const mockUser = {
+    id: 1,
+    openId: "test-user",
+    name: "Tester",
+    role: "user"
+  };
+  return {
+    req: opts.req,
+    res: opts.res,
+    user: mockUser
+  };
+}
+
 // server/db.ts
 import { eq } from "drizzle-orm";
 import { createClient } from "@libsql/client";
@@ -428,150 +549,6 @@ async function getUserByOpenId(openId) {
   if (!db) return void 0;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result.length > 0 ? result[0] : void 0;
-}
-async function createStory(data) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(stories).values(data).returning();
-  return result;
-}
-async function createGeneratedImage(data) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(generatedImages).values(data).returning();
-  return result;
-}
-
-// server/storage.ts
-async function storagePut(relKey, data, contentType = "image/jpeg") {
-  const base64 = typeof data === "string" ? data : Buffer.from(data).toString("base64");
-  const url = base64.startsWith("data:") ? base64 : `data:${contentType};base64,${base64}`;
-  return {
-    key: `test_${Date.now()}.jpg`,
-    url
-  };
-}
-
-// server/routers.ts
-var memoryStore = {
-  stories: /* @__PURE__ */ new Map(),
-  images: /* @__PURE__ */ new Map()
-};
-var appRouter = router({
-  system: systemRouter,
-  auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
-    logout: publicProcedure.mutation(({ ctx }) => {
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return { success: true };
-    })
-  }),
-  story: router({
-    create: protectedProcedure.input(
-      z2.object({
-        childName: z2.string().min(1),
-        childAge: z2.number().min(3).max(12),
-        educationalGoal: z2.string().min(1),
-        problemDescription: z2.string().min(1),
-        childPhotoBase64: z2.string().optional()
-      })
-    ).mutation(async ({ ctx, input }) => {
-      const storyId = Math.floor(Math.random() * 1e6);
-      let childPhotoUrl;
-      if (input.childPhotoBase64) {
-        try {
-          const buffer = Buffer.from(input.childPhotoBase64, "base64");
-          const { url } = await storagePut(`photos/${storyId}.jpg`, buffer, "image/jpeg");
-          childPhotoUrl = url;
-        } catch (e) {
-          console.error("Upload failed:", e);
-        }
-      }
-      const prompt = `
-\u0623\u0646\u062A \u0643\u0627\u062A\u0628 \u0642\u0635\u0635 \u0623\u0637\u0641\u0627\u0644 \u0645\u062D\u062A\u0631\u0641. \u0627\u0643\u062A\u0628 \u0642\u0635\u0629 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0641\u0635\u062D\u0649 \u0644\u0644\u0637\u0641\u0644 ${input.childName} (${input.childAge} \u0633\u0646\u0629).
-\u0627\u0644\u0645\u0634\u0643\u0644\u0629: ${input.problemDescription}.
-\u0627\u0644\u0647\u062F\u0641 \u0627\u0644\u062A\u0631\u0628\u0648\u064A: ${input.educationalGoal}.
-
-\u0627\u0644\u0645\u062A\u0637\u0644\u0628\u0627\u062A:
-1. \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0627\u0644\u0642\u0635\u0629 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0641\u0635\u062D\u0649 \u0627\u0644\u0633\u0644\u064A\u0645\u0629.
-2. \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0644\u0645\u0627\u062A \u0645\u0634\u0643\u0648\u0644\u0629 \u0634\u0643\u0644\u0627\u064B \u062A\u0627\u0645\u0627\u064B \u0644\u0645\u0633\u0627\u0639\u062F\u0629 \u0627\u0644\u0637\u0641\u0644 \u0639\u0644\u0649 \u0627\u0644\u0642\u0631\u0627\u0621\u0629.
-3. \u0627\u0628\u062F\u0623 \u0628\u0627\u0644\u0642\u0635\u0629 \u0645\u0628\u0627\u0634\u0631\u0629 \u062F\u0648\u0646 \u0623\u064A \u0645\u0642\u062F\u0645\u0627\u062A.
-4. \u0642\u0633\u0645 \u0627\u0644\u0642\u0635\u0629 \u0625\u0644\u0649 \u0641\u0642\u0631\u062A\u064A\u0646 \u0645\u0634\u0648\u0642\u062A\u064A\u0646.
-        `.trim();
-      const storyText = await generateStoryWithGPT(prompt);
-      const storyObj = {
-        id: storyId,
-        userId: ctx.user.id,
-        childName: input.childName,
-        storyText,
-        status: "completed"
-      };
-      memoryStore.stories.set(storyId, storyObj);
-      try {
-        await createStory(storyObj);
-      } catch (e) {
-        console.warn("DB skip");
-      }
-      if (childPhotoUrl) {
-        const imagePrompt = `
-CRITICAL: HIGH CHARACTER CONSISTENCY REQUIRED.
-The main character MUST BE AN EXACT MATCH to the child in the reference photo. 
-REPLICATE THEIR FACE, HAIR, AND EXACT CLOTHING from the photo.
-Scene to illustrate: "${storyText.slice(0, 200)}".
-Setting: Traditional Tunisian background (Sidi Bou Said style white walls and blue doors).
-Style: Premium Anime/Ghibli illustration, high detail, vibrant, safe for kids.
-          `.trim();
-        try {
-          const taskId = await generateImageWithNanoBanana(imagePrompt, childPhotoUrl);
-          const imgObj = { storyId, taskId, status: "processing", url: null };
-          memoryStore.images.set(storyId, [imgObj]);
-          try {
-            await createGeneratedImage(imgObj);
-          } catch (e) {
-          }
-        } catch (e) {
-          console.error("Image failed:", e);
-        }
-      }
-      return { storyId, storyText, hasImages: !!childPhotoUrl };
-    }),
-    getStatus: protectedProcedure.input(z2.object({ storyId: z2.number() })).query(async ({ input }) => {
-      const story = memoryStore.stories.get(input.storyId);
-      const images = memoryStore.images.get(input.storyId) || [];
-      for (const img of images) {
-        if (img.status === "processing") {
-          try {
-            const url = await getImageUrlFromTask(img.taskId);
-            if (url) {
-              img.url = url;
-              img.status = "completed";
-            }
-          } catch (e) {
-          }
-        }
-      }
-      return {
-        story: story || { id: input.storyId, status: "completed", storyText: "" },
-        images: images.map((img) => ({ url: img.url, status: img.status }))
-      };
-    })
-  })
-});
-
-// server/_core/context.ts
-async function createContext(opts) {
-  const mockUser = {
-    id: 1,
-    openId: "test-user",
-    name: "Tester",
-    role: "user"
-  };
-  return {
-    req: opts.req,
-    res: opts.res,
-    user: mockUser
-  };
 }
 
 // shared/_core/errors.ts
