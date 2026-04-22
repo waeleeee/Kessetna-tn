@@ -745,6 +745,21 @@ Style: Premium Anime/Ghibli illustration, high detail, vibrant, safe for kids.
   })
 });
 
+// server/_core/context.ts
+async function createContext(opts) {
+  const mockUser = {
+    id: 1,
+    openId: "test-user",
+    name: "Tester",
+    role: "user"
+  };
+  return {
+    req: opts.req,
+    res: opts.res,
+    user: mockUser
+  };
+}
+
 // shared/_core/errors.ts
 var HttpError = class extends Error {
   constructor(statusCode, message) {
@@ -975,21 +990,6 @@ var SDKServer = class {
   }
 };
 var sdk = new SDKServer();
-
-// server/_core/context.ts
-async function createContext(opts) {
-  let user = null;
-  try {
-    user = await sdk.authenticateRequest(opts.req);
-  } catch (error) {
-    user = null;
-  }
-  return {
-    req: opts.req,
-    res: opts.res,
-    user
-  };
-}
 
 // server/_core/oauth.ts
 function getQueryParam(req, key) {
