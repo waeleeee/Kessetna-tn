@@ -258,13 +258,6 @@ async function getTaskStatus(taskId) {
     error: data?.errorMessage
   };
 }
-async function getImageUrlFromTask(taskId) {
-  const status = await getTaskStatus(taskId);
-  if (status.status === "completed" && status.result?.images?.[0]?.url) {
-    return status.result.images[0].url;
-  }
-  return null;
-}
 
 // server/imageStore.ts
 var imageMemoryStore = /* @__PURE__ */ new Map();
@@ -281,10 +274,6 @@ async function storagePut(relKey, data, contentType = "image/jpeg") {
 }
 
 // server/routers.ts
-var memoryStore = {
-  stories: /* @__PURE__ */ new Map(),
-  images: /* @__PURE__ */ new Map()
-};
 var appRouter = router({
   system: systemRouter,
   auth: router({
@@ -306,12 +295,11 @@ var appRouter = router({
       })
     ).mutation(async ({ ctx, input }) => {
       try {
-        const storyId = Math.floor(Math.random() * 1e6);
         let childPhotoUrl;
         if (input.childPhotoBase64) {
           try {
             const buffer = Buffer.from(input.childPhotoBase64, "base64");
-            const { url } = await storagePut(`photos/${storyId}.jpg`, buffer, "image/jpeg");
+            const { url } = await storagePut(`photos/${Date.now()}.jpg`, buffer, "image/jpeg");
             childPhotoUrl = url;
           } catch (e) {
             console.error("Upload failed:", e);
@@ -319,67 +307,39 @@ var appRouter = router({
         }
         let storyText;
         try {
-          const prompt = `\u0627\u0643\u062A\u0628 \u0642\u0635\u0629 \u0644\u0644\u0623\u0637\u0641\u0627\u0644 \u0639\u0646 ${input.childName}...`.trim();
+          const prompt = `\u0627\u0643\u062A\u0628 \u0642\u0635\u0629 \u0644\u0644\u0623\u0637\u0641\u0627\u0644 \u0639\u0646 ${input.childName} (${input.childAge} \u0633\u0646\u0629). \u0627\u0644\u0645\u0634\u0643\u0644\u0629: ${input.problemDescription}. \u0627\u0644\u0647\u062F\u0641: ${input.educationalGoal}.`.trim();
           storyText = await generateStoryWithGPT(prompt);
         } catch (e) {
-          console.warn("AI Story failed, using mock story:", e.message);
-          storyText = `\u0643\u0627\u0646 \u064A\u0627 \u0645\u0643\u0627\u0646 \u0641\u064A \u0642\u062F\u064A\u0645 \u0627\u0644\u0632\u0645\u0627\u0646\u060C \u0643\u0627\u0646 \u0647\u0646\u0627\u0643 \u0637\u0641\u0644 \u0634\u062C\u0627\u0639 \u0627\u0633\u0645\u0647 ${input.childName}. \u0643\u0627\u0646 ${input.childName} \u064A\u062D\u0628 \u0627\u0644\u0645\u063A\u0627\u0645\u0631\u0629 \u0648\u0627\u0644\u0644\u0639\u0628 \u0641\u064A \u0634\u0648\u0627\u0631\u0639 \u0633\u064A\u062F\u064A \u0628\u0648\u0633\u0639\u064A\u062F \u0627\u0644\u062C\u0645\u064A\u0644\u0629. \u0641\u064A \u064A\u0648\u0645 \u0645\u0646 \u0627\u0644\u0623\u064A\u0627\u0645\u060C \u0642\u0631\u0631 ${input.childName} \u0623\u0646 \u064A\u062A\u0639\u0644\u0645 \u0634\u064A\u0626\u0627\u064B \u062C\u062F\u064A\u062F\u0627\u064B \u0639\u0646 ${input.educationalGoal}. \u0648\u0647\u0643\u0630\u0627 \u0628\u062F\u0623\u062A \u0627\u0644\u0642\u0635\u0629 \u0627\u0644\u062C\u0645\u064A\u0644\u0629 \u0627\u0644\u062A\u064A \u0639\u0644\u0645\u062A\u0646\u0627 \u0623\u0646 \u0627\u0644\u0634\u062C\u0627\u0639\u0629 \u0647\u064A \u0645\u0641\u062A\u0627\u062D \u0627\u0644\u0646\u062C\u0627\u062D.`;
+          storyText = `\u0643\u0627\u0646 \u064A\u0627 \u0645\u0643\u0627\u0646... \u0642\u0635\u0629 \u0639\u0646 ${input.childName}.`;
         }
-        const storyObj = {
-          id: storyId,
-          userId: ctx.user.id,
-          childName: input.childName,
-          storyText,
-          status: "completed"
-        };
-        memoryStore.stories.set(storyId, storyObj);
+        let taskId;
         if (childPhotoUrl) {
-          const protocol = ctx.req.headers["x-forwarded-proto"] || "http";
-          const host = ctx.req.headers.host;
-          const absoluteChildPhotoUrl = childPhotoUrl.startsWith("http") ? childPhotoUrl : `${protocol}://${host}${childPhotoUrl}`;
-          const imagePrompt = `
-CRITICAL: HIGH CHARACTER CONSISTENCY REQUIRED.
-MATCH THE CHILD'S FACE AND CLOTHING EXACTLY FROM THE PHOTO.
-Scene: ${storyText.slice(0, 200)}
-Style: Premium Anime, Sidi Bou Said setting.
-            `.trim();
           try {
-            const taskId = await generateImageWithNanoBanana(imagePrompt, absoluteChildPhotoUrl);
-            const imgObj = { storyId, taskId, status: "processing", url: null };
-            memoryStore.images.set(storyId, [imgObj]);
+            const protocol = ctx.req.headers["x-forwarded-proto"] || "http";
+            const host = ctx.req.headers.host;
+            const absoluteUrl = `${protocol}://${host}${childPhotoUrl}`;
+            const imagePrompt = `Anime illustration of ${input.childName}. Sidi Bou Said. ${storyText.slice(0, 100)}`;
+            taskId = await generateImageWithNanoBanana(imagePrompt, absoluteUrl);
           } catch (e) {
-            console.error("Image generation failed:", e);
+            console.error("Image failed:", e);
           }
         }
-        return { storyId, storyText, hasImages: !!childPhotoUrl };
+        return { storyText, taskId };
       } catch (error) {
-        console.error("CRITICAL BYPASS:", error);
-        return {
-          storyId: 999,
-          storyText: "\u062D\u062F\u062B \u062E\u0637\u0623 \u0628\u0633\u064A\u0637\u060C \u0648\u0644\u0643\u0646 \u0647\u0627 \u0647\u064A \u0642\u0635\u062A\u0643: \u0643\u0627\u0646 \u0647\u0646\u0627\u0643 \u0637\u0641\u0644 \u0631\u0627\u0626\u0639 \u064A\u062D\u0628 \u0627\u0644\u0642\u0635\u0635...",
-          hasImages: false
-        };
+        return { storyText: "Error happened", taskId: void 0 };
       }
     }),
-    getStatus: protectedProcedure.input(z2.object({ storyId: z2.number() })).query(async ({ input }) => {
-      const story = memoryStore.stories.get(input.storyId);
-      const images = memoryStore.images.get(input.storyId) || [];
-      for (const img of images) {
-        if (img.status === "processing") {
-          try {
-            const url = await getImageUrlFromTask(img.taskId);
-            if (url) {
-              img.url = url;
-              img.status = "completed";
-            }
-          } catch (e) {
-          }
-        }
+    pollImage: publicProcedure.input(z2.object({ taskId: z2.string() })).query(async ({ input }) => {
+      try {
+        const status = await getTaskStatus(input.taskId);
+        return {
+          status: status.status,
+          url: status.result?.images?.[0]?.url,
+          error: status.error
+        };
+      } catch (e) {
+        return { status: "failed", error: e.message };
       }
-      return {
-        story: story || { id: input.storyId, status: "completed", storyText: "" },
-        images: images.map((img) => ({ url: img.url, status: img.status }))
-      };
     })
   })
 });

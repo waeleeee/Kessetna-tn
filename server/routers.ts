@@ -5,15 +5,9 @@ import { TRPCError } from "@trpc/server";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { generateStoryWithGPT, generateImageWithNanoBanana, getImageUrlFromTask } from "./kieai";
+import { generateStoryWithGPT, generateImageWithNanoBanana, getTaskStatus } from "./kieai";
 import * as db from "./db";
 import { storagePut } from "./storage";
-
-// Memory fallback for testing
-const memoryStore = {
-  stories: new Map(),
-  images: new Map(),
-};
 
 export const appRouter = router({
   system: systemRouter,
@@ -39,91 +33,57 @@ export const appRouter = router({
       )
       .mutation(async ({ ctx, input }) => {
         try {
-          const storyId = Math.floor(Math.random() * 1000000);
           let childPhotoUrl: string | undefined;
 
-          // 1. Photo Bypass
+          // 1. Photo
           if (input.childPhotoBase64) {
             try {
               const buffer = Buffer.from(input.childPhotoBase64, "base64");
-              const { url } = await storagePut(`photos/${storyId}.jpg`, buffer, "image/jpeg");
+              const { url } = await storagePut(`photos/${Date.now()}.jpg`, buffer, "image/jpeg");
               childPhotoUrl = url;
             } catch (e) { console.error("Upload failed:", e); }
           }
 
-          // 2. GPT Story with MOCK FALLBACK
+          // 2. GPT Story
           let storyText: string;
           try {
-            const prompt = `اكتب قصة للأطفال عن ${input.childName}...`.trim();
+            const prompt = `اكتب قصة للأطفال عن ${input.childName} (${input.childAge} سنة). المشكلة: ${input.problemDescription}. الهدف: ${input.educationalGoal}.`.trim();
             storyText = await generateStoryWithGPT(prompt);
           } catch (e) {
-            console.warn("AI Story failed, using mock story:", e.message);
-            storyText = `كان يا مكان في قديم الزمان، كان هناك طفل شجاع اسمه ${input.childName}. كان ${input.childName} يحب المغامرة واللعب في شوارع سيدي بوسعيد الجميلة. في يوم من الأيام، قرر ${input.childName} أن يتعلم شيئاً جديداً عن ${input.educationalGoal}. وهكذا بدأت القصة الجميلة التي علمتنا أن الشجاعة هي مفتاح النجاح.`;
+            storyText = `كان يا مكان... قصة عن ${input.childName}.`;
           }
 
-          // 3. Memory Save
-          const storyObj = { 
-            id: storyId, 
-            userId: ctx.user.id, 
-            childName: input.childName, 
-            storyText, 
-            status: "completed" 
-          };
-          memoryStore.stories.set(storyId, storyObj);
-
-          // 4. Images with Absolute URL for AI
+          // 3. Image Task
+          let taskId: string | undefined;
           if (childPhotoUrl) {
-            const protocol = ctx.req.headers["x-forwarded-proto"] || "http";
-            const host = ctx.req.headers.host;
-            const absoluteChildPhotoUrl = childPhotoUrl.startsWith("http") 
-              ? childPhotoUrl 
-              : `${protocol}://${host}${childPhotoUrl}`;
-
-            const imagePrompt = `
-CRITICAL: HIGH CHARACTER CONSISTENCY REQUIRED.
-MATCH THE CHILD'S FACE AND CLOTHING EXACTLY FROM THE PHOTO.
-Scene: ${storyText.slice(0, 200)}
-Style: Premium Anime, Sidi Bou Said setting.
-            `.trim();
-
             try {
-              const taskId = await generateImageWithNanoBanana(imagePrompt, absoluteChildPhotoUrl);
-              const imgObj = { storyId, taskId, status: "processing", url: null };
-              memoryStore.images.set(storyId, [imgObj]);
-            } catch (e) { console.error("Image generation failed:", e); }
+              const protocol = ctx.req.headers["x-forwarded-proto"] || "http";
+              const host = ctx.req.headers.host;
+              const absoluteUrl = `${protocol}://${host}${childPhotoUrl}`;
+              const imagePrompt = `Anime illustration of ${input.childName}. Sidi Bou Said. ${storyText.slice(0, 100)}`;
+              taskId = await generateImageWithNanoBanana(imagePrompt, absoluteUrl);
+            } catch (e) { console.error("Image failed:", e); }
           }
 
-          return { storyId, storyText, hasImages: !!childPhotoUrl };
+          return { storyText, taskId };
         } catch (error) {
-          // Absolute last resort - never throw 500
-          console.error("CRITICAL BYPASS:", error);
-          return {
-            storyId: 999,
-            storyText: "حدث خطأ بسيط، ولكن ها هي قصتك: كان هناك طفل رائع يحب القصص...",
-            hasImages: false
-          };
+          return { storyText: "Error happened", taskId: undefined };
         }
       }),
 
-    getStatus: protectedProcedure
-      .input(z.object({ storyId: z.number() }))
+    pollImage: publicProcedure
+      .input(z.object({ taskId: z.string() }))
       .query(async ({ input }) => {
-        const story = memoryStore.stories.get(input.storyId);
-        const images = memoryStore.images.get(input.storyId) || [];
-
-        for (const img of images) {
-          if (img.status === "processing") {
-            try {
-              const url = await getImageUrlFromTask(img.taskId);
-              if (url) { img.url = url; img.status = "completed"; }
-            } catch (e) {}
-          }
+        try {
+          const status = await getTaskStatus(input.taskId);
+          return {
+            status: status.status,
+            url: status.result?.images?.[0]?.url,
+            error: status.error
+          };
+        } catch (e) {
+          return { status: "failed", error: e.message };
         }
-
-        return { 
-          story: story || { id: input.storyId, status: "completed", storyText: "" }, 
-          images: images.map(img => ({ url: img.url, status: img.status })) 
-        };
       }),
   }),
 });
