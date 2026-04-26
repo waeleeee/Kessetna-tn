@@ -8,6 +8,9 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { generateStoryWithGPT, generateImageWithNanoBanana, getTaskStatus } from "./kieai";
 import * as db from "./db";
 import { storagePut } from "./storage";
+import fs from "fs";
+import path from "path";
+import puppeteer from "puppeteer";
 
 export const appRouter = router({
   system: systemRouter,
@@ -44,17 +47,17 @@ export const appRouter = router({
             } catch (e) { console.error("Upload failed:", e); }
           }
 
-          // 2. GPT Story
-          let storyText: string;
-          let visualPrompt: string | undefined;
+          // 2. GPT Story (New Multi-Scene IA Agent)
+          let generatedStory: any;
           try {
             const prompt = `اكتب قصة للأطفال عن ${input.childName} (${input.childAge} سنة). المشكلة: ${input.problemDescription}. الهدف: ${input.educationalGoal}.`.trim();
-            const result = await generateStoryWithGPT(prompt);
-            storyText = result.story;
-            visualPrompt = result.visualPrompt;
+            generatedStory = await generateStoryWithGPT(prompt);
           } catch (e) {
-            storyText = `كان يا مكان... قصة عن ${input.childName}.`;
-            visualPrompt = `Anime illustration of ${input.childName} in Sidi Bou Said.`;
+            generatedStory = {
+              title: "قصة سحرية",
+              scenes: [{ text: `كان يا مكان... قصة عن ${input.childName}.`, imagePrompt: "A happy child" }],
+              characterDescription: "A young child"
+            };
           }
 
           // 3. Image Task
@@ -63,16 +66,21 @@ export const appRouter = router({
             ? `data:image/jpeg;base64,${input.childPhotoBase64}` 
             : undefined;
 
-          if (imageRef) {
+          if (imageRef && generatedStory.scenes.length > 0) {
             try {
-              // Use the base64 data URI directly for character consistency (works on localhost)
-              taskId = await generateImageWithNanoBanana(visualPrompt || input.childName, imageRef);
+              const fullPrompt = `${generatedStory.characterDescription}, ${generatedStory.scenes[0].imagePrompt}`;
+              taskId = await generateImageWithNanoBanana(fullPrompt, imageRef);
             } catch (e) { console.error("Image failed:", e); }
           }
 
-          return { storyText, taskId };
+          return { 
+            title: generatedStory.title,
+            scenes: generatedStory.scenes,
+            characterDescription: generatedStory.characterDescription,
+            taskId 
+          };
         } catch (error) {
-          return { storyText: "Error happened", taskId: undefined };
+          return { error: "Failed to create story" };
         }
       }),
 
@@ -81,13 +89,145 @@ export const appRouter = router({
       .query(async ({ input }) => {
         try {
           const status = await getTaskStatus(input.taskId);
+          let imageUrl = status.result?.images?.[0]?.url;
+
+          if (status.status === "completed" && imageUrl) {
+            try {
+              // Local save path
+              const publicDir = path.join(process.cwd(), "client", "public");
+              const uploadsDir = path.join(publicDir, "uploads", "generated-images");
+              
+              if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+              }
+
+              const fileName = `${input.taskId}.jpg`;
+              const filePath = path.join(uploadsDir, fileName);
+
+              // Only download if we don't have it yet
+              if (!fs.existsSync(filePath)) {
+                const response = await fetch(imageUrl);
+                const buffer = Buffer.from(await response.arrayBuffer());
+                fs.writeFileSync(filePath, buffer);
+                console.log(`[Storage] Saved image locally: ${fileName}`);
+              }
+
+              // Return the local URL so the frontend uses the local version
+              imageUrl = `/uploads/generated-images/${fileName}`;
+            } catch (err) {
+              console.error("[Storage] Failed to save image locally:", err);
+              // Fallback to original remote URL if local save fails
+            }
+          }
+
           return {
             status: status.status,
-            url: status.result?.images?.[0]?.url,
+            url: imageUrl,
             error: status.error
           };
         } catch (e) {
           return { status: "failed", error: e.message };
+        }
+      }),
+
+    generateRemaining: protectedProcedure
+      .input(
+        z.object({
+          characterDescription: z.string(),
+          scenes: z.array(z.object({ text: z.string(), imagePrompt: z.string() })),
+          firstImageRef: z.string(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const taskIds: string[] = [];
+        for (let i = 1; i < input.scenes.length; i++) {
+          try {
+            const fullPrompt = `${input.characterDescription}, ${input.scenes[i].imagePrompt}`;
+            const taskId = await generateImageWithNanoBanana(fullPrompt, input.firstImageRef);
+            taskIds.push(taskId);
+          } catch (e) { console.error(`Scene ${i} failed:`, e); }
+        }
+        return { taskIds };
+      }),
+
+    finalize: protectedProcedure
+      .input(z.object({
+        title: z.string(),
+        scenes: z.array(z.object({ text: z.string(), imagePrompt: z.string() })),
+        imageUrls: z.array(z.string())
+      }))
+      .mutation(async ({ input }) => {
+        try {
+          const publicDir = path.join(process.cwd(), "client", "public");
+          const storiesDir = path.join(publicDir, "stories");
+          if (!fs.existsSync(storiesDir)) fs.mkdirSync(storiesDir, { recursive: true });
+
+          let finalHtml = `
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <title>حكاية ${input.title}</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f7f1e3; margin: 0; padding: 0; }
+        .page { background: #f7f1e3; height: 297mm; width: 210mm; display: flex; flex-direction: column; align-items: center; padding: 20mm; box-sizing: border-box; page-break-after: always; }
+        img { max-width: 100%; max-height: 50%; border-radius: 15px; margin-bottom: 30px; object-fit: contain; }
+        p { font-size: 28px; line-height: 1.8; text-align: right; color: #333; width: 100%; font-weight: bold; }
+        h1 { text-align: center; color: #8B4513; margin-bottom: 40px; font-size: 40px; }
+    </style>
+</head>
+<body>
+    <div class="page" style="justify-content: center;">
+      <h1 style="font-size: 60px;">حكاية ${input.title}</h1>
+    </div>
+    ${input.scenes.map((scene, i) => `
+        <div class="page">
+            <img src="${input.imageUrls[i] || ""}" alt="Scene ${i+1}">
+            <p>${scene.text}</p>
+        </div>
+    `).join("")}
+</body>
+</html>
+          `;
+
+          // Embed local images as base64 for Puppeteer to render them offline
+          for (const url of input.imageUrls) {
+            if (url && url.startsWith('/uploads/')) {
+              try {
+                const localPath = path.join(publicDir, url.replace('/uploads/', 'uploads/'));
+                if (fs.existsSync(localPath)) {
+                  const b64 = fs.readFileSync(localPath).toString('base64');
+                  finalHtml = finalHtml.replace(`src="${url}"`, `src="data:image/jpeg;base64,${b64}"`);
+                }
+              } catch (e) { console.error("Base64 error", e); }
+            }
+          }
+
+          // Generate PDF
+          console.log("[Story] Launching Puppeteer to create PDF...");
+          const browser = await puppeteer.launch({ 
+            headless: true, 
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+          });
+          const page = await browser.newPage();
+          await page.setContent(finalHtml, { waitUntil: 'networkidle0' });
+          
+          const fileName = `story-${Date.now()}.pdf`;
+          const filePath = path.join(storiesDir, fileName);
+          
+          await page.pdf({ 
+            path: filePath, 
+            format: 'A4', 
+            printBackground: true 
+          });
+          
+          await browser.close();
+
+          console.log(`[Story] Finalized and saved: ${fileName}`);
+          return { success: true, url: `/stories/${fileName}` };
+        } catch (e) {
+          console.error("Failed to finalize story", e);
+          return { success: false };
         }
       }),
   }),

@@ -110,4 +110,6 @@ temp/
 .webdev/
 
 # Manus version file (auto-generated, not part of source)
-client/public/__manus__/version.json
+# Generated content
+client/public/uploads/
+client/public/stories/

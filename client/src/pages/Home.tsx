@@ -17,8 +17,10 @@ import {
   Camera, 
   RefreshCw,
   BookOpen,
-  CheckCircle2
+  CheckCircle2,
+  Image as ImageIcon
 } from "lucide-react";
+import { StoryBook } from "@/components/StoryBook";
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth();
@@ -35,25 +37,96 @@ export default function Home() {
   const [showResults, setShowResults] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string>("");
   const [isCreating, setIsCreating] = useState(false);
-  const [storyText, setStoryText] = useState("");
+  const [scenes, setScenes] = useState<any[]>([]);
+  const [characterDescription, setCharacterDescription] = useState("");
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageUrls, setImageUrls] = useState<(string | null)[]>([]);
+  const [remainingTaskIds, setRemainingTaskIds] = useState<string[]>([]);
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [hasFinalized, setHasFinalized] = useState(false);
 
   // tRPC
   const createStoryMutation = trpc.story.create.useMutation();
-  const pollImageQuery = trpc.story.pollImage.useQuery(
+  const generateRemainingMutation = trpc.story.generateRemaining.useMutation();
+  const finalizeStoryMutation = trpc.story.finalize.useMutation();
+  const utils = trpc.useContext();
+  
+  // Poll for the FIRST image
+  const pollFirstImage = trpc.story.pollImage.useQuery(
     { taskId: taskId || "" },
     {
-      enabled: !!taskId && showResults && !imageUrl,
+      enabled: !!taskId && !imageUrls[0],
       refetchInterval: (data) => (data?.status === "completed" || data?.status === "failed" ? false : 3000),
     }
   );
 
+  // Effect to trigger remaining images once the first one is ready
   useEffect(() => {
-    if (pollImageQuery.data?.url) {
-      setImageUrl(pollImageQuery.data.url);
+    const firstUrl = pollFirstImage.data?.url;
+    if (firstUrl && !imageUrls[0]) {
+      const newUrls = [...imageUrls];
+      newUrls[0] = firstUrl;
+      setImageUrls(newUrls);
+      
+      // Now start generating the rest using the first anime face as reference!
+      generateRemainingMutation.mutateAsync({
+        characterDescription,
+        scenes,
+        firstImageRef: firstUrl
+      }).then(result => {
+        setRemainingTaskIds(result.taskIds);
+      });
     }
-  }, [pollImageQuery.data]);
+  }, [pollFirstImage.data]);
+
+  // Poll for the remaining images
+  useEffect(() => {
+    if (remainingTaskIds.length === 0) return;
+
+    const interval = setInterval(async () => {
+      let allDone = true;
+      const newUrls = [...imageUrls];
+
+      for (let i = 0; i < remainingTaskIds.length; i++) {
+        const id = remainingTaskIds[i];
+        if (!id) continue;
+        
+        const imageIndex = i + 1; // 0 is the first image
+        if (!newUrls[imageIndex]) {
+          allDone = false;
+          try {
+            const data = await utils.story.pollImage.fetch({ taskId: id });
+            if (data.status === "completed" && data.url) {
+              newUrls[imageIndex] = data.url;
+              setImageUrls([...newUrls]);
+            } else if (data.status === "failed") {
+              newUrls[imageIndex] = "https://placehold.co/600x400/f7f1e3/8b4513?text=فشل+توليد+الصورة";
+              setImageUrls([...newUrls]);
+            }
+          } catch (e) {
+            console.error("Polling error for", id, e);
+          }
+        }
+      }
+
+      if (allDone) clearInterval(interval);
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [remainingTaskIds, imageUrls, utils]);
+
+  // Automatically finalize the story once ALL images are loaded
+  useEffect(() => {
+    if (showResults && !hasFinalized && scenes.length > 0 && imageUrls.length === scenes.length && imageUrls.every(url => !!url)) {
+      setHasFinalized(true);
+      finalizeStoryMutation.mutate({
+        title: formData.childName,
+        scenes: scenes,
+        imageUrls: imageUrls as string[]
+      });
+      console.log("[Story] All images ready. Finalizing automatically...");
+    }
+  }, [imageUrls, scenes, showResults, hasFinalized]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -82,10 +155,13 @@ export default function Home() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreating(true);
-    setImageUrl(null);
+    setImageUrls([]);
+    setRemainingTaskIds([]);
+    setHasFinalized(false);
     try {
       const result = await createStoryMutation.mutateAsync(formData);
-      setStoryText(result.storyText);
+      setScenes(result.scenes || []);
+      setCharacterDescription(result.characterDescription || "");
       setTaskId(result.taskId || null);
       setShowResults(true);
     } catch (error) {
@@ -98,8 +174,8 @@ export default function Home() {
   if (!isAuthenticated) return <div className="p-10 text-center font-bold">يرجى تسجيل الدخول</div>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#FFF5F0] to-[#FFE8D6] p-4 md:p-8" dir="rtl">
-      <div className="max-w-5xl mx-auto pt-6">
+    <div className="min-h-screen bg-[#FDFBF7] p-4 md:p-8 font-['Fredoka']" dir="rtl">
+      <div className="max-w-7xl mx-auto pt-6">
         <AnimatePresence mode="wait">
           {!showResults ? (
             <motion.div
@@ -108,8 +184,9 @@ export default function Home() {
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.5 }}
             >
-              <Card className="overflow-hidden border-none shadow-2xl bg-white/80 backdrop-blur-md rounded-3xl">
-                <div className="bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] p-8 text-white text-center">
+              <Card className="overflow-hidden border-none shadow-2xl bg-[#FFF9F2]/80 backdrop-blur-md rounded-[3rem]">
+                <div className="bg-gradient-to-r from-[#8B4513] to-[#A0522D] p-10 text-white text-center relative overflow-hidden">
+                  <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/old-mathematics.png')]"></div>
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
@@ -118,8 +195,8 @@ export default function Home() {
                   >
                     <Sparkles className="size-12" />
                   </motion.div>
-                  <h1 className="text-4xl md:text-5xl font-black mb-2 drop-shadow-sm">كتابنا السحري</h1>
-                  <p className="text-white/90 text-lg md:text-xl font-medium">اصنع قصة تعليمية ملهمة لطفلك في ثوانٍ</p>
+                  <h1 className="text-5xl md:text-6xl font-black mb-4 drop-shadow-lg font-['Playfair_Display']">حكاياتنا التونسية القديمة</h1>
+                  <p className="text-white/90 text-xl md:text-2xl font-medium">حول ملامح طفلك إلى بطل في قصة فنية كلاسيكية</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-8 space-y-10">
@@ -222,23 +299,55 @@ export default function Home() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
-                    <Button 
-                      type="submit" 
-                      disabled={isCreating}
-                      className="w-full bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] text-white font-black text-2xl py-8 rounded-3xl shadow-xl shadow-orange-200 hover:shadow-orange-300 transition-all border-none"
-                    >
-                      {isCreating ? (
-                        <div className="flex items-center gap-3">
-                          <RefreshCw className="animate-spin size-7" />
-                          جاري تأليف الحكاية...
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-3">
-                          <BookOpen className="size-7" />
-                          ابدأ المغامرة السحرية ✨
-                        </div>
-                      )}
-                    </Button>
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <Button 
+                        type="submit" 
+                        disabled={isCreating}
+                        className="flex-1 bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] text-white font-black text-2xl py-8 rounded-3xl shadow-xl shadow-orange-200 hover:shadow-orange-300 transition-all border-none"
+                      >
+                        {isCreating ? (
+                          <div className="flex items-center gap-3">
+                            <RefreshCw className="animate-spin size-7" />
+                            جاري تأليف الحكاية...
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <BookOpen className="size-7" />
+                            ابدأ المغامرة السحرية ✨
+                          </div>
+                        )}
+                      </Button>
+                      
+                      <Button 
+                        type="button"
+                        onClick={() => {
+                          setScenes([
+                            {
+                              text: "فِي قَديمِ الزَّمانِ، كانَ هُناكَ طِفلٌ صَغيرٌ يَدعَى آدَم، يَعِيشُ فِي مَدينَةِ سِيدي بوسَعيد الجَميلَة.",
+                              imagePrompt: "Watercolor illustration of a child in Sidi Bou Said"
+                            },
+                            {
+                              text: "كانَ آدَم يُحِبُّ التَّجَوُّلَ فِي الأَزِقَّةِ الزَّرقاءِ وَالبَيضاءِ، وَيَحْلُمُ بِأَن يَكونَ رَسَّاماً مَشْهوراً.",
+                              imagePrompt: "Watercolor illustration of blue and white streets"
+                            },
+                            {
+                              text: "وَفِي يَومٍ مِنَ الأَيَّامِ، وَجَدَ ريشَةً سِحْريَّةً بَيْنَ الصُّخورِ البَحريَّةِ.",
+                              imagePrompt: "Watercolor illustration of a magic brush near the sea"
+                            }
+                          ]);
+                          setImageUrls([
+                            "https://placehold.co/600x400/f7f1e3/8b4513?text=مشهد+توضيحي+1",
+                            "https://placehold.co/600x400/f7f1e3/8b4513?text=مشهد+توضيحي+2",
+                            "https://placehold.co/600x400/f7f1e3/8b4513?text=مشهد+توضيحي+3"
+                          ]);
+                          setShowResults(true);
+                        }}
+                        className="bg-[#4ECDC4] text-white font-black text-xl py-8 px-10 rounded-3xl shadow-xl shadow-teal-100 hover:shadow-teal-200 transition-all border-none"
+                      >
+                        <ImageIcon className="size-7 ml-2" />
+                        تجربة الكتاب 📖
+                      </Button>
+                    </div>
                   </motion.div>
                 </form>
               </Card>
@@ -251,62 +360,98 @@ export default function Home() {
               className="space-y-10 pb-20"
             >
               {/* Story Section */}
-              <Card className="overflow-hidden border-none shadow-2xl bg-white rounded-3xl">
-                <div className="bg-[#4ECDC4] p-6 text-white flex justify-between items-center">
-                  <h2 className="text-3xl font-black flex items-center gap-2">
-                    <BookOpen className="size-8" /> حكاية {formData.childName} السحرية
+              <Card className="overflow-hidden border-none shadow-2xl bg-[#fefefe] rounded-[3rem]">
+                <div className="bg-[#8B4513] p-8 text-white flex justify-between items-center relative overflow-hidden">
+                   <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/old-mathematics.png')]"></div>
+                  <h2 className="text-4xl font-black flex items-center gap-3 font-['Playfair_Display'] relative z-10">
+                    <BookOpen className="size-10" /> حكاية {formData.childName}
                   </h2>
-                  <div className="flex gap-2">
-                    <div className="px-4 py-1 bg-white/20 rounded-full text-sm font-bold">
-                      تم التأليف بالذكاء الاصطناعي
-                    </div>
+                  <div className="flex gap-4 relative z-10">
+                    <Button 
+                      variant="outline" 
+                      className="bg-white/20 border-white/40 text-white hover:bg-white/30 font-bold rounded-2xl py-6 px-8 text-lg"
+                      onClick={() => setShowPdfPreview(!showPdfPreview)}
+                    >
+                      {showPdfPreview ? "الرجوع للكتاب التفاعلي 📖" : "معاينة نسخة الطباعة PDF 📄"}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="bg-white/20 border-white/40 text-white hover:bg-white/30 font-bold rounded-2xl py-6 px-8 text-lg"
+                      onClick={() => window.print()}
+                    >
+                      تحميل النسخة الفنية PDF 📄
+                    </Button>
                   </div>
                 </div>
-                <div className="p-10">
-                  <div className="prose prose-2xl max-w-none text-[#2d3436] leading-[1.8] font-medium story-content">
-                    <Streamdown>{storyText}</Streamdown>
-                  </div>
+                <div className="p-0 bg-[#f7f1e3] overflow-hidden interactive-book-only relative">
+                  {!showPdfPreview ? (
+                    <StoryBook 
+                      pages={scenes.map((scene, i) => ({
+                        image: imageUrls[i] || "https://placehold.co/600x400/f7f1e3/8b4513?text=جاري+تحضير+اللوحة+الفنية...",
+                        text: scene.text
+                      }))}
+                    />
+                  ) : (
+                    <div className="max-h-[800px] overflow-y-auto p-10 space-y-10 bg-[#e5e5e5]">
+                      {scenes.map((scene, i) => (
+                        <div key={i} className="flex flex-col md:flex-row bg-[#f7f1e3] shadow-2xl rounded-xl overflow-hidden min-h-[500px]">
+                          <div className="w-full md:w-1/2 aspect-square md:aspect-auto">
+                            <img 
+                              src={imageUrls[i] || "https://placehold.co/600x400/f7f1e3/8b4513?text=جاري+تحضير..."} 
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="w-full md:w-1/2 p-12 flex flex-col justify-center items-end bg-[#f7f1e3] relative">
+                            <div className="absolute top-4 left-4 text-4xl font-black text-black/5 select-none">
+                              {i * 2 + 2}
+                            </div>
+                            <p className="text-3xl font-bold text-right leading-relaxed text-[#4b4b4b]">
+                              {scene.text}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {!imageUrls[0] && (
+                    <div className="absolute inset-0 bg-black/5 backdrop-blur-[2px] flex items-center justify-center z-50 pointer-events-none">
+                      <div className="bg-white/90 p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4 border-2 border-[#8B4513]/20">
+                        <RefreshCw className="size-12 text-[#8B4513] animate-spin" />
+                        <p className="text-2xl font-black text-[#8B4513]">الرسام السحري يجهز لوحاتك...</p>
+                        <p className="text-sm font-medium text-[#8B4513]/60 italic">قد يستغرق ذلك دقيقة لضمان دقة الملامح</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Full Story Print Layout (Hidden on Screen, Visible on PDF) */}
+                <div className="hidden print-only-layout">
+                  {scenes.map((scene, i) => (
+                    <div key={i} className="print-spread">
+                      <div className="print-page">
+                        <img 
+                          src={imageUrls[i] || "https://placehold.co/600x400/f7f1e3/8b4513?text=جاري+تحضير+اللوحة+الفنية..."} 
+                          className="bg-[#f7f1e3]"
+                        />
+                        <div className="page-number-indicator">
+                          {i * 2 + 1}
+                        </div>
+                      </div>
+                      <div className="print-page">
+                        <div className="print-text-container">
+                          <p>{scene.text}</p>
+                          <div className="page-number-indicator">
+                            {i * 2 + 2}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </Card>
 
-              {/* Image Section */}
-              {taskId && (
-                <Card className="overflow-hidden border-none shadow-2xl bg-white rounded-3xl">
-                  <div className="bg-[#FF9F43] p-6 text-white flex justify-between items-center">
-                    <h2 className="text-3xl font-black flex items-center gap-2">
-                      <Sparkles className="size-8" /> لوحة الحكاية
-                    </h2>
-                    {imageUrl && (
-                      <CheckCircle2 className="size-8 text-white/80" />
-                    )}
-                  </div>
-                  <div className="p-8">
-                    {!imageUrl ? (
-                      <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <div className="relative">
-                          <div className="size-24 border-8 border-gray-100 border-t-[#FF9F43] rounded-full animate-spin"></div>
-                          <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-8 text-[#FF9F43]" />
-                        </div>
-                        <p className="mt-8 text-2xl font-bold text-gray-700">جاري رسم اللوحة الفنية...</p>
-                        <p className="text-gray-400 mt-2">نحول ملامح {formData.childName} إلى بطل حقيقي!</p>
-                      </div>
-                    ) : (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.5 }}
-                      >
-                        <img 
-                          src={imageUrl} 
-                          alt="Story Illustration"
-                          className="w-full rounded-2xl shadow-xl border-8 border-white ring-1 ring-gray-100" 
-                        />
-                      </motion.div>
-                    )}
-                  </div>
-                </Card>
-              )}
-              
+              {/* Reset Button */}
               <motion.div
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
