@@ -51,35 +51,40 @@ export default function Home() {
   const finalizeStoryMutation = trpc.story.finalize.useMutation();
   const utils = trpc.useContext();
   
-  // Poll for the FIRST image
+  // Poll for the FIRST image - fast polling (every 1.5 seconds)
   const pollFirstImage = trpc.story.pollImage.useQuery(
     { taskId: taskId || "" },
     {
       enabled: !!taskId && !imageUrls[0],
-      refetchInterval: (data) => (data?.status === "completed" || data?.status === "failed" ? false : 3000),
+      refetchInterval: (data) => (data?.status === "completed" || data?.status === "failed" ? false : 1500),
     }
   );
 
   // Effect to trigger remaining images once the first one is ready
   useEffect(() => {
     const firstUrl = pollFirstImage.data?.url;
-    if (firstUrl && !imageUrls[0]) {
+    if (firstUrl && !imageUrls[0] && taskId) {
       const newUrls = [...imageUrls];
       newUrls[0] = firstUrl;
       setImageUrls(newUrls);
       
-      // Now start generating the rest using the first anime face as reference!
+      // Now start generating the rest using the first image as reference!
+      // This ensures the child character looks the same in all scenes
       generateRemainingMutation.mutateAsync({
         characterDescription,
         scenes,
-        firstImageRef: firstUrl
+        firstImageTaskId: taskId, // Pass the taskId, backend will fetch the image URL and use it as reference
+        childName: formData.childName
       }).then(result => {
         setRemainingTaskIds(result.taskIds);
+        console.log(`[story] Generated ${result.taskIds.filter(id => id).length} image tasks for remaining scenes`);
+      }).catch(error => {
+        console.error("Failed to generate remaining images:", error);
       });
     }
-  }, [pollFirstImage.data]);
+  }, [pollFirstImage.data, taskId, formData.childName]);
 
-  // Poll for the remaining images
+  // Poll for the remaining images - fast polling (every 2 seconds)
   useEffect(() => {
     if (remainingTaskIds.length === 0) return;
 
@@ -99,6 +104,7 @@ export default function Home() {
             if (data.status === "completed" && data.url) {
               newUrls[imageIndex] = data.url;
               setImageUrls([...newUrls]);
+              console.log(`[story] Scene ${imageIndex + 1} image ready`);
             } else if (data.status === "failed") {
               newUrls[imageIndex] = "https://placehold.co/600x400/f7f1e3/8b4513?text=فشل+توليد+الصورة";
               setImageUrls([...newUrls]);
@@ -110,7 +116,7 @@ export default function Home() {
       }
 
       if (allDone) clearInterval(interval);
-    }, 4000);
+    }, 2000); // Check every 2 seconds instead of 4
 
     return () => clearInterval(interval);
   }, [remainingTaskIds, imageUrls, utils]);

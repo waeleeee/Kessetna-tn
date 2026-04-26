@@ -51,16 +51,19 @@ export const appRouter = router({
           let generatedStory: any;
           try {
             const prompt = `اكتب قصة للأطفال عن ${input.childName} (${input.childAge} سنة). المشكلة: ${input.problemDescription}. الهدف: ${input.educationalGoal}.`.trim();
-            generatedStory = await generateStoryWithGPT(prompt);
+            generatedStory = await generateStoryWithGPT(prompt, "neutral");
           } catch (e) {
             generatedStory = {
               title: "قصة سحرية",
-              scenes: [{ text: `كان يا مكان... قصة عن ${input.childName}.`, imagePrompt: "A happy child" }],
+              scenes: [
+                { text: `كان يا مكان... قصة عن ${input.childName}.`, imagePrompt: "A happy child" },
+                { text: "وعاشوا في سعادة أبدية.", imagePrompt: "A happy child celebrating" }
+              ],
               characterDescription: "A young child"
             };
           }
 
-          // 3. Image Task
+          // 3. Image Task for first scene
           let taskId: string | undefined;
           const imageRef = input.childPhotoBase64 
             ? `data:image/jpeg;base64,${input.childPhotoBase64}` 
@@ -69,17 +72,21 @@ export const appRouter = router({
           if (imageRef && generatedStory.scenes.length > 0) {
             try {
               const fullPrompt = `${generatedStory.characterDescription}, ${generatedStory.scenes[0].imagePrompt}`;
-              taskId = await generateImageWithNanoBanana(fullPrompt, imageRef);
+              taskId = await generateImageWithNanoBanana(fullPrompt, imageRef, input.childName);
             } catch (e) { console.error("Image failed:", e); }
           }
+
+          console.log(`[story.create] Generated story with ${generatedStory.scenes.length} scenes. First image taskId: ${taskId}`);
 
           return { 
             title: generatedStory.title,
             scenes: generatedStory.scenes,
             characterDescription: generatedStory.characterDescription,
-            taskId 
+            taskId,
+            childName: input.childName
           };
         } catch (error) {
+          console.error("[story.create] Error:", error);
           return { error: "Failed to create story" };
         }
       }),
@@ -135,19 +142,50 @@ export const appRouter = router({
         z.object({
           characterDescription: z.string(),
           scenes: z.array(z.object({ text: z.string(), imagePrompt: z.string() })),
-          firstImageRef: z.string(),
+          firstImageTaskId: z.string(),
+          childName: z.string(),
         })
       )
       .mutation(async ({ input }) => {
-        const taskIds: string[] = [];
-        for (let i = 1; i < input.scenes.length; i++) {
-          try {
-            const fullPrompt = `${input.characterDescription}, ${input.scenes[i].imagePrompt}`;
-            const taskId = await generateImageWithNanoBanana(fullPrompt, input.firstImageRef);
-            taskIds.push(taskId);
-          } catch (e) { console.error(`Scene ${i} failed:`, e); }
+        try {
+          console.log(`[generateRemaining] Starting for ${input.childName}, scenes: ${input.scenes.length}`);
+          
+          // First, get the URL of the first generated image
+          const firstImageStatus = await getTaskStatus(input.firstImageTaskId);
+          if (firstImageStatus.status !== "completed" || !firstImageStatus.result?.images?.[0]?.url) {
+            throw new Error("First image not ready yet. Wait for it to complete before generating remaining scenes.");
+          }
+          
+          const firstImageUrl = firstImageStatus.result.images[0].url;
+          console.log(`[generateRemaining] Using first image as reference: ${firstImageUrl}`);
+
+          const taskIds: string[] = [];
+          
+          // Generate images for ALL remaining scenes (starting from scene 1)
+          for (let i = 1; i < input.scenes.length; i++) {
+            if (!input.scenes[i]) continue;
+            
+            try {
+              const fullPrompt = `${input.characterDescription}, ${input.scenes[i].imagePrompt}`;
+              // Use the first image as reference for consistency
+              const taskId = await generateImageWithNanoBanana(fullPrompt, firstImageUrl, input.childName);
+              taskIds.push(taskId);
+              console.log(`[generateRemaining] Scene ${i} taskId: ${taskId}`);
+            } catch (e) { 
+              console.error(`[generateRemaining] Scene ${i} failed:`, e); 
+              taskIds.push("");
+            }
+          }
+          
+          console.log(`[generateRemaining] Generated ${taskIds.filter(id => id).length} of ${input.scenes.length - 1} images`);
+          return { taskIds };
+        } catch (error) {
+          console.error("[generateRemaining] Error:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: error.message || "Failed to generate remaining scenes"
+          });
         }
-        return { taskIds };
       }),
 
     finalize: protectedProcedure
@@ -158,6 +196,18 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         try {
+          // Validate all scenes have images
+          if (input.imageUrls.length !== input.scenes.length) {
+            throw new Error(`Story incomplete: ${input.imageUrls.length} images but ${input.scenes.length} scenes. Waiting for all images to be generated.`);
+          }
+          
+          // Validate no empty URLs
+          if (input.imageUrls.some(url => !url)) {
+            throw new Error("Some images are missing or failed to generate");
+          }
+
+          console.log(`[finalize] Finalizing story with ${input.scenes.length} scenes and ${input.imageUrls.length} images`);
+
           const publicDir = path.join(process.cwd(), "client", "public");
           const storiesDir = path.join(publicDir, "stories");
           if (!fs.existsSync(storiesDir)) fs.mkdirSync(storiesDir, { recursive: true });

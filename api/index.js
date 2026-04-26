@@ -234,7 +234,7 @@ Rules:
   }
 }
 async function generateImageWithNanoBanana(prompt, childPhotoUrl) {
-  const NANO_BANANA_API_KEY = "b7aa7cee46af40269c2d8a7d036cbfb0";
+  const NANO_BANANA_API_KEY = "c0d80270518700d8a79f00e7912a70ff";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
   const safePrompt = `
 Anime style, a young Tunisian boy with a friendly smile, ${prompt}, 
@@ -264,7 +264,7 @@ Tunisian story theme, high quality, detailed background.
   return taskId;
 }
 async function getTaskStatus(taskId) {
-  const NANO_BANANA_API_KEY = "b7aa7cee46af40269c2d8a7d036cbfb0";
+  const NANO_BANANA_API_KEY = "c0d80270518700d8a79f00e7912a70ff";
   const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
   const response = await fetch(`${NANO_BANANA_BASE}/api/v1/nanobanana/record-info?taskId=${taskId}`, {
     method: "GET",
