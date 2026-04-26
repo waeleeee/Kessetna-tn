@@ -3,7 +3,7 @@ import { ENV } from "./_core/env";
 
 const KIE_AI_API_BASE = "https://api.kie.ai";
 const KIE_AI_API_KEY = process.env.KIE_AI_API_KEY || "45023506279af6f87ab82071fb0b5b0c";
-const NANO_BANANA_API_KEY = process.env.NANO_BANANA_API_KEY || "c0d80270518700d8a79f00e7912a70ff";
+const NANO_BANANA_API_KEY = process.env.NANO_BANANA_API_KEY || "6f864e5aad70bcf038d76f8c6c8c4afe";
 const NANO_BANANA_BASE = "https://api.nanobananaapi.ai";
 
 // Timeout wrapper for fetch with exponential backoff retry
